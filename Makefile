@@ -1,4 +1,4 @@
-.PHONY: migrate migrate-down run build test lint generate
+.PHONY: migrate migrate-down migrate-status run build test lint generate
 
 DB_URL ?= $(shell grep '^DATABASE_URL=' .env | cut -d= -f2-)
 
@@ -8,8 +8,11 @@ migrate:
 migrate-down:
 	GOSUMDB=sum.golang.org go tool goose -dir migrations postgres "$(DB_URL)" down
 
+migrate-status:
+	GOSUMDB=sum.golang.org go tool goose -dir migrations postgres "$(DB_URL)" status
+
 run:
-	GOSUMDB=sum.golang.org go run ./cmd/trip-service
+	env $$(grep -v '^#' .env | xargs) GOSUMDB=sum.golang.org go run ./cmd/trip-service
 
 build:
 	GOSUMDB=sum.golang.org go build -o bin/trip-service ./cmd/trip-service
