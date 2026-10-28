@@ -1,15 +1,24 @@
 package http
 
 import (
+	"context"
 	"net/http"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sonncat/template/api"
 )
 
-type Handler struct{}
+type Handler struct {
+	pool          *pgxpool.Pool
+	queryTimeout  time.Duration
+}
 
-func NewHandler() *Handler {
-	return &Handler{}
+func NewHandler(pool *pgxpool.Pool, queryTimeout time.Duration) *Handler {
+	return &Handler{
+		pool:         pool,
+		queryTimeout: queryTimeout,
+	}
 }
 
 func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.CreateTripParams) {
@@ -31,7 +40,15 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), h.queryTimeout)
+	defer cancel()
+
 	w.Header().Set("Content-Type", "application/json")
+	if err := h.pool.Ping(ctx); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"status":"unavailable"}`))
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"ok"}`))
 }

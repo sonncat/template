@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/sonncat/template/api"
 	"github.com/sonncat/template/internal/config"
+	"github.com/sonncat/template/internal/db"
 	httptransport "github.com/sonncat/template/internal/transport/http"
 )
 
@@ -21,7 +22,15 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	h := httptransport.NewHandler()
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.DB.ConnectTimeout)
+	pool, err := db.NewPool(ctx, cfg.DB)
+	cancel()
+	if err != nil {
+		log.Fatalf("db: %v", err)
+	}
+	defer pool.Close()
+
+	h := httptransport.NewHandler(pool, cfg.DB.QueryTimeout)
 
 	r := chi.NewRouter()
 	api.HandlerFromMux(h, r)
@@ -46,10 +55,10 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer shutdownCancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
 	log.Println("stopped")
