@@ -1,27 +1,22 @@
-.PHONY: migrate migrate-down migrate-status run build test lint generate
+.PHONY: generate migrate migrate-down migrate-status run build test
 
-DB_URL ?= $(shell grep '^DATABASE_URL=' .env | cut -d= -f2-)
+generate:
+	GOSUMDB=sum.golang.org go tool oapi-codegen -generate types,chi-server -package api -include-operation-ids createTrip,getTrip,finishTrip,health,ready -o api/api.gen.go contracts/openapi/trip-service.openapi.yaml
 
 migrate:
-	GOSUMDB=sum.golang.org go tool goose -dir migrations postgres "$(DB_URL)" up
+	set -a; . ./.env; set +a; GOSUMDB=sum.golang.org go tool goose -dir migrations postgres "$${DATABASE_URL}" up
 
 migrate-down:
-	GOSUMDB=sum.golang.org go tool goose -dir migrations postgres "$(DB_URL)" down
+	set -a; . ./.env; set +a; GOSUMDB=sum.golang.org go tool goose -dir migrations postgres "$${DATABASE_URL}" down
 
 migrate-status:
-	GOSUMDB=sum.golang.org go tool goose -dir migrations postgres "$(DB_URL)" status
+	set -a; . ./.env; set +a; GOSUMDB=sum.golang.org go tool goose -dir migrations postgres "$${DATABASE_URL}" status
 
 run:
-	env $$(grep -v '^#' .env | xargs) GOSUMDB=sum.golang.org go run ./cmd/trip-service
+	set -a; . ./.env; set +a; GOSUMDB=sum.golang.org go run ./cmd/trip-service
 
 build:
 	GOSUMDB=sum.golang.org go build -o bin/trip-service ./cmd/trip-service
 
 test:
 	GOSUMDB=sum.golang.org go test -race ./...
-
-lint:
-	golangci-lint run
-
-generate:
-	GOSUMDB=sum.golang.org go tool oapi-codegen -generate types,chi-server -package api -include-operation-ids createTrip,getTrip,finishTrip,health,ready -o api/api.gen.go contracts/openapi/trip-service.openapi.yaml
