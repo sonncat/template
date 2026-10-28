@@ -13,7 +13,9 @@ import (
 	"github.com/sonncat/template/api"
 	"github.com/sonncat/template/internal/config"
 	"github.com/sonncat/template/internal/db"
+	"github.com/sonncat/template/internal/repository"
 	httptransport "github.com/sonncat/template/internal/transport/http"
+	"github.com/sonncat/template/internal/txmanager"
 )
 
 func main() {
@@ -30,7 +32,10 @@ func main() {
 	}
 	defer pool.Close()
 
-	h := httptransport.NewHandler(pool, cfg.DB.QueryTimeout)
+	txManager := txmanager.NewPgxTxManager(pool)
+	tripsRepo := repository.NewTripsRepository(pool)
+
+	h := httptransport.NewHandler(pool, txManager, tripsRepo, cfg.DB.QueryTimeout)
 
 	r := chi.NewRouter()
 	api.HandlerFromMux(h, r)
