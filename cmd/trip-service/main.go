@@ -9,12 +9,14 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/sonncat/template/internal/config"
 )
 
 func main() {
-	addr := os.Getenv("HTTP_ADDR")
-	if addr == "" {
-		addr = ":8080"
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -30,15 +32,16 @@ func main() {
 	})
 
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              cfg.HTTPAddr,
+		Handler:           mux,
+		ReadTimeout:       5 * time.Second,
+		ReadHeaderTimeout: 2 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	go func() {
-		log.Printf("listening on %s", addr)
+		log.Printf("listening on %s", cfg.HTTPAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
 		}
@@ -48,7 +51,7 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	srv.Shutdown(ctx)
 	log.Println("stopped")
