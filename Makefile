@@ -19,8 +19,8 @@ build:
 	GOSUMDB=sum.golang.org go build -o bin/trip-service ./cmd/trip-service
 
 test:
-	GOSUMDB=sum.golang.org go test -race -count=2 -coverpkg=./internal/domain/...,./internal/usecase/... -coverprofile=coverage.out ./...
-	GOSUMDB=sum.golang.org go tool cover -func=coverage.out
+	GOTOOLCHAIN=go1.26.0+auto GOSUMDB=sum.golang.org go test -race -count=2 -coverpkg=./internal/domain/...,./internal/usecase/... -coverprofile=coverage.out ./...
+	GOTOOLCHAIN=go1.26.0+auto GOSUMDB=sum.golang.org go tool cover -func=coverage.out
 
 test-integration:
 	set -a; . ./.env; set +a; GOSUMDB=sum.golang.org go test -race -count=2 -tags=integration ./internal/repository/...

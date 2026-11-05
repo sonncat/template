@@ -21,8 +21,12 @@ func New(trips tripRepository, tx txManager) *UseCase {
 	}
 }
 
-// Execute сохраняет поездку и возвращает её данные из базы
+// Execute проверяет и сохраняет поездку, затем возвращает её данные из базы
 func (u *UseCase) Execute(ctx context.Context, trip *model.Trip) (*model.Trip, error) {
+	if err := trip.Validate(); err != nil {
+		return nil, fmt.Errorf("validate trip: %w", err)
+	}
+
 	if err := u.tx.Do(ctx, func(txCtx context.Context) error {
 		return u.trips.Create(txCtx, trip)
 	}); err != nil {

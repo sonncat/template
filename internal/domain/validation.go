@@ -1,17 +1,6 @@
 package domain
 
-import "fmt"
+import "github.com/sonncat/template/internal/domain/validation"
 
-// ValidationError описывает ошибку в конкретном поле запроса
-type ValidationError struct {
-	Field   string
-	Message string
-}
-
-func (e *ValidationError) Error() string {
-	if e.Field == "" {
-		return e.Message
-	}
-
-	return fmt.Sprintf("%s: %s", e.Field, e.Message)
-}
+// ValidationError — общее имя ошибки валидации для остальных слоёв
+type ValidationError = validation.Error
