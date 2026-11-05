@@ -4,8 +4,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/sonncat/template/internal/domain"
 )
 
 const (
@@ -33,7 +31,7 @@ type Trip struct {
 // Finish завершает активную поездку в указанное время
 func (t *Trip) Finish(at time.Time) error {
 	if t.Status != StatusActive {
-		return domain.ErrTripCompleted
+		return ErrTripCompleted
 	}
 
 	t.Status = StatusCompleted

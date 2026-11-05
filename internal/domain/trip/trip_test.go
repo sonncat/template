@@ -4,8 +4,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/sonncat/template/internal/domain"
 )
 
 func TestFinish(t *testing.T) {
@@ -38,7 +36,7 @@ func TestFinish(t *testing.T) {
 
 		err := trip.Finish(finishedAt)
 
-		if !errors.Is(err, domain.ErrTripCompleted) {
+		if !errors.Is(err, ErrTripCompleted) {
 			t.Fatalf("Finish() error = %v, want ErrTripCompleted", err)
 		}
 		if trip.Status != StatusCompleted {
