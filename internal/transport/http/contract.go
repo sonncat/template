@@ -1,3 +1,5 @@
+//go:generate go tool mockgen -source=contract.go -destination=mocks_test.go -package=http
+
 package http
 
 import (
@@ -18,4 +20,8 @@ type createTripUseCase interface {
 
 type finishTripUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID) (*model.Trip, error)
+}
+
+type databasePinger interface {
+	Ping(ctx context.Context) error
 }

@@ -7,14 +7,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/sonncat/template/api"
 	"github.com/sonncat/template/internal/model"
 )
 
 type Handler struct {
-	pool         *pgxpool.Pool
+	database     databasePinger
 	createTrip   createTripUseCase
 	getTrip      getTripUseCase
 	finishTrip   finishTripUseCase
@@ -22,14 +21,14 @@ type Handler struct {
 }
 
 func NewHandler(
-	pool *pgxpool.Pool,
+	database databasePinger,
 	createTrip createTripUseCase,
 	getTrip getTripUseCase,
 	finishTrip finishTripUseCase,
 	queryTimeout time.Duration,
 ) *Handler {
 	return &Handler{
-		pool:         pool,
+		database:     database,
 		createTrip:   createTrip,
 		getTrip:      getTrip,
 		finishTrip:   finishTrip,
@@ -146,7 +145,7 @@ func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	if err := h.pool.Ping(ctx); err != nil {
+	if err := h.database.Ping(ctx); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"status":"unavailable"}`))
 		return
