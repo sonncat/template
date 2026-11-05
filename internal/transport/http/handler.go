@@ -22,6 +22,7 @@ type Handler struct {
 	pool         *pgxpool.Pool
 	txManager    txmanager.TxManager
 	trips        *repository.TripsRepository
+	getTrip      getTripUseCase
 	queryTimeout time.Duration
 }
 
@@ -29,12 +30,14 @@ func NewHandler(
 	pool *pgxpool.Pool,
 	txManager txmanager.TxManager,
 	trips *repository.TripsRepository,
+	getTrip getTripUseCase,
 	queryTimeout time.Duration,
 ) *Handler {
 	return &Handler{
 		pool:         pool,
 		txManager:    txManager,
 		trips:        trips,
+		getTrip:      getTrip,
 		queryTimeout: queryTimeout,
 	}
 }
@@ -124,7 +127,7 @@ func (h *Handler) GetTrip(w http.ResponseWriter, r *http.Request, tripId api.Tri
 	ctx, cancel := context.WithTimeout(r.Context(), h.queryTimeout)
 	defer cancel()
 
-	t, err := h.trips.GetByID(ctx, uuid.UUID(tripId))
+	t, err := h.getTrip.Execute(ctx, uuid.UUID(tripId))
 	if err != nil {
 		if errors.Is(err, domain.ErrTripNotFound) {
 			writeProblem(w, r, http.StatusNotFound, "trip_not_found", "Trip was not found")

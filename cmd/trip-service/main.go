@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
 	"github.com/sonncat/template/api"
 	"github.com/sonncat/template/internal/config"
 	"github.com/sonncat/template/internal/db"
 	"github.com/sonncat/template/internal/repository"
 	httptransport "github.com/sonncat/template/internal/transport/http"
 	"github.com/sonncat/template/internal/txmanager"
+	gettrip "github.com/sonncat/template/internal/usecase/trip/get"
 )
 
 func main() {
@@ -34,8 +36,9 @@ func main() {
 
 	txManager := txmanager.NewPgxTxManager(pool)
 	tripsRepo := repository.NewTripsRepository(pool)
+	getTrip := gettrip.New(tripsRepo)
 
-	h := httptransport.NewHandler(pool, txManager, tripsRepo, cfg.DB.QueryTimeout)
+	h := httptransport.NewHandler(pool, txManager, tripsRepo, getTrip, cfg.DB.QueryTimeout)
 
 	r := chi.NewRouter()
 
@@ -60,7 +63,7 @@ func main() {
 	go func() {
 		log.Printf("listening on %s", cfg.HTTPAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("server error: %v", err) // не Fatalf, чтобы сработали defer
+			log.Printf("server error: %v", err) // Не Fatalf, чтобы сработали defer.
 		}
 	}()
 
