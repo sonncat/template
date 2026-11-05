@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
@@ -13,24 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/sonncat/template/internal/domain"
+	"github.com/sonncat/template/internal/model"
 	"github.com/sonncat/template/internal/txmanager"
 )
-
-type Trip struct {
-	ID             uuid.UUID
-	UserID         uuid.UUID
-	DriverID       uuid.UUID
-	StartLatitude  float64
-	StartLongitude float64
-	EndLatitude    float64
-	EndLongitude   float64
-	Price          int64
-	Status         string
-	StartedAt      time.Time
-	FinishedAt     *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-}
 
 type TripsRepository struct {
 	pool *pgxpool.Pool
@@ -40,7 +24,7 @@ func NewTripsRepository(pool *pgxpool.Pool) *TripsRepository {
 	return &TripsRepository{pool: pool}
 }
 
-func (r *TripsRepository) Create(ctx context.Context, t *Trip) error {
+func (r *TripsRepository) Create(ctx context.Context, t *model.Trip) error {
 	exec := txmanager.ExecutorFromContext(ctx, r.pool)
 
 	insertTrip := sq.Insert("trips").
@@ -64,7 +48,7 @@ func (r *TripsRepository) Create(ctx context.Context, t *Trip) error {
 	if _, err := exec.Exec(ctx, sql, args...); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			// Проверяем, что упало именно ограничение на активные поездки водителя
+			// Проверяем, что упало именно ограничение на активные поездки водителя.
 			if pgErr.ConstraintName == "trips_driver_active_uniq" {
 				return domain.ErrDriverBusy
 			}
@@ -89,7 +73,7 @@ func (r *TripsRepository) Create(ctx context.Context, t *Trip) error {
 	return nil
 }
 
-func (r *TripsRepository) GetByID(ctx context.Context, id uuid.UUID) (*Trip, error) {
+func (r *TripsRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Trip, error) {
 	exec := txmanager.ExecutorFromContext(ctx, r.pool)
 
 	q := sq.Select(
@@ -106,7 +90,7 @@ func (r *TripsRepository) GetByID(ctx context.Context, id uuid.UUID) (*Trip, err
 		return nil, fmt.Errorf("build select trip: %w", err)
 	}
 
-	var t Trip
+	var t model.Trip
 	err = exec.QueryRow(ctx, sql, args...).Scan(
 		&t.ID, &t.UserID, &t.DriverID,
 		&t.StartLatitude, &t.StartLongitude, &t.EndLatitude, &t.EndLongitude,
@@ -118,10 +102,11 @@ func (r *TripsRepository) GetByID(ctx context.Context, id uuid.UUID) (*Trip, err
 		}
 		return nil, fmt.Errorf("select trip: %w", err)
 	}
+
 	return &t, nil
 }
 
-func (r *TripsRepository) Finish(ctx context.Context, id uuid.UUID) (*Trip, error) {
+func (r *TripsRepository) Finish(ctx context.Context, id uuid.UUID) (*model.Trip, error) {
 	exec := txmanager.ExecutorFromContext(ctx, r.pool)
 
 	update := sq.Update("trips").
@@ -161,6 +146,7 @@ func (r *TripsRepository) Finish(ctx context.Context, id uuid.UUID) (*Trip, erro
 	if err != nil {
 		return nil, fmt.Errorf("build insert history: %w", err)
 	}
+
 	if _, err := exec.Exec(ctx, sql, args...); err != nil {
 		return nil, fmt.Errorf("insert trip history: %w", err)
 	}

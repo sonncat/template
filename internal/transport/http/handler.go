@@ -13,6 +13,7 @@ import (
 
 	"github.com/sonncat/template/api"
 	"github.com/sonncat/template/internal/domain"
+	"github.com/sonncat/template/internal/model"
 	"github.com/sonncat/template/internal/repository"
 	"github.com/sonncat/template/internal/txmanager"
 )
@@ -42,7 +43,8 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.
 	var body api.TripData
 
 	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields() // запрещаем лишние поля в JSON
+	dec.DisallowUnknownFields() // Запрещаем лишние поля в JSON.
+
 	if err := dec.Decode(&body); err != nil {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "malformed JSON body or unknown fields")
 		return
@@ -52,20 +54,23 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "user_id and driver_id are required")
 		return
 	}
+
 	if body.Price <= 0 {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "price is required and must be > 0")
 		return
 	}
+
 	if body.StartPoint.Latitude == 0 && body.StartPoint.Longitude == 0 {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "start_point is required")
 		return
 	}
+
 	if body.EndPoint.Latitude == 0 && body.EndPoint.Longitude == 0 {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "end_point is required")
 		return
 	}
 
-	// Валидация диапазонов
+	// Проверяем диапазоны координат.
 	if body.StartPoint.Latitude < -90 || body.StartPoint.Latitude > 90 ||
 		body.EndPoint.Latitude < -90 || body.EndPoint.Latitude > 90 ||
 		body.StartPoint.Longitude < -180 || body.StartPoint.Longitude > 180 ||
@@ -74,7 +79,7 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.
 		return
 	}
 
-	trip := &repository.Trip{
+	trip := &model.Trip{
 		ID:             uuid.New(),
 		UserID:         uuid.UUID(body.UserId),
 		DriverID:       uuid.UUID(body.DriverId),
@@ -98,6 +103,7 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.
 			writeProblem(w, r, http.StatusConflict, "driver_busy", "Driver already has an active trip")
 			return
 		}
+
 		writeProblem(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
 		return
 	}
@@ -124,6 +130,7 @@ func (h *Handler) GetTrip(w http.ResponseWriter, r *http.Request, tripId api.Tri
 			writeProblem(w, r, http.StatusNotFound, "trip_not_found", "Trip was not found")
 			return
 		}
+
 		writeProblem(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
 		return
 	}
@@ -137,12 +144,14 @@ func (h *Handler) FinishTrip(w http.ResponseWriter, r *http.Request, tripId api.
 	ctx, cancel := context.WithTimeout(r.Context(), h.queryTimeout)
 	defer cancel()
 
-	var finished *repository.Trip
+	var finished *model.Trip
+
 	err := h.txManager.Do(ctx, func(ctx context.Context) error {
 		t, err := h.trips.Finish(ctx, uuid.UUID(tripId))
 		if err != nil {
 			return err
 		}
+
 		finished = t
 		return nil
 	})
@@ -174,17 +183,20 @@ func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	w.Header().Set("Content-Type", "application/json")
+
 	if err := h.pool.Ping(ctx); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Write([]byte(`{"status":"unavailable"}`))
 		return
 	}
+
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
-func toAPITrip(t *repository.Trip) api.Trip {
+func toAPITrip(t *model.Trip) api.Trip {
 	status := api.TripStatus(t.Status)
+
 	return api.Trip{
 		Id:         openapi_types.UUID(t.ID),
 		UserId:     openapi_types.UUID(t.UserID),
