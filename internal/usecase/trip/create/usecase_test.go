@@ -93,7 +93,7 @@ func TestExecute(t *testing.T) {
 		tx := NewMocktxManager(ctrl)
 
 		trip := validTrip()
-		trip.Price = 0
+		trip.Price = -1
 
 		usecase := New(repo, tx)
 		got, err := usecase.Execute(context.Background(), trip)

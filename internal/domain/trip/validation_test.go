@@ -20,6 +20,19 @@ func TestValidate(t *testing.T) {
 			change: func(*Trip) {},
 		},
 		{
+			name: "zero coordinates are valid",
+			change: func(trip *Trip) {
+				trip.StartLatitude = 0
+				trip.StartLongitude = 0
+				trip.EndLatitude = 0
+				trip.EndLongitude = 0
+			},
+		},
+		{
+			name:   "zero price is valid",
+			change: func(trip *Trip) { trip.Price = 0 },
+		},
+		{
 			name:      "missing user",
 			change:    func(trip *Trip) { trip.UserID = uuid.Nil },
 			wantField: "user_id",
@@ -30,25 +43,9 @@ func TestValidate(t *testing.T) {
 			wantField: "driver_id",
 		},
 		{
-			name:      "invalid price",
-			change:    func(trip *Trip) { trip.Price = 0 },
+			name:      "negative price",
+			change:    func(trip *Trip) { trip.Price = -1 },
 			wantField: "price",
-		},
-		{
-			name: "missing start point",
-			change: func(trip *Trip) {
-				trip.StartLatitude = 0
-				trip.StartLongitude = 0
-			},
-			wantField: "start_point",
-		},
-		{
-			name: "missing end point",
-			change: func(trip *Trip) {
-				trip.EndLatitude = 0
-				trip.EndLongitude = 0
-			},
-			wantField: "end_point",
 		},
 		{
 			name:      "invalid start latitude",
