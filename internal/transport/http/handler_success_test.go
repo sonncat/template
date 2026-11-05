@@ -23,14 +23,15 @@ func TestCreateTripSuccess(t *testing.T) {
 	create.EXPECT().
 		Execute(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, trip *model.Trip) (*model.Trip, error) {
+			trip.ID = uuid.New()
+			trip.Status = "active"
+			trip.StartedAt = time.Now().UTC()
 			return trip, nil
 		})
 
 	handler := NewHandler(nil, create, nil, nil, time.Second)
 
-	body := validTripBody
-
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/trips", strings.NewReader(body))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/trips", strings.NewReader(validTripBody))
 	response := httptest.NewRecorder()
 
 	handler.CreateTrip(response, request, api.CreateTripParams{})

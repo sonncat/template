@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/sonncat/template/api"
 	"github.com/sonncat/template/internal/model"
 )
@@ -48,7 +46,6 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, _ api.Creat
 	}
 
 	trip := &model.Trip{
-		ID:             uuid.New(),
 		UserID:         body.UserId,
 		DriverID:       body.DriverId,
 		StartLatitude:  body.StartPoint.Latitude,
@@ -56,8 +53,6 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, _ api.Creat
 		EndLatitude:    body.EndPoint.Latitude,
 		EndLongitude:   body.EndPoint.Longitude,
 		Price:          body.Price,
-		Status:         "active",
-		StartedAt:      time.Now().UTC(),
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), h.queryTimeout)
