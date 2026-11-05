@@ -7,11 +7,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/sonncat/template/internal/domain/trip"
 	"github.com/sonncat/template/internal/model"
 )
 
-// UseCase завершает поездку.
+// UseCase завершает поездку
 type UseCase struct {
 	trips tripRepository
 	tx    txManager
@@ -35,7 +34,7 @@ func (u *UseCase) Execute(ctx context.Context, id uuid.UUID) (*model.Trip, error
 			return fmt.Errorf("get trip: %w", err)
 		}
 
-		if err := trip.Finish(current, time.Now().UTC()); err != nil {
+		if err := current.Finish(time.Now().UTC()); err != nil {
 			return fmt.Errorf("check trip status: %w", err)
 		}
 

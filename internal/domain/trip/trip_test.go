@@ -6,16 +6,15 @@ import (
 	"time"
 
 	"github.com/sonncat/template/internal/domain"
-	"github.com/sonncat/template/internal/model"
 )
 
 func TestFinish(t *testing.T) {
 	finishedAt := time.Date(2026, time.January, 15, 12, 0, 0, 0, time.UTC)
 
 	t.Run("active trip is completed", func(t *testing.T) {
-		trip := &model.Trip{Status: StatusActive}
+		trip := &Trip{Status: StatusActive}
 
-		err := Finish(trip, finishedAt)
+		err := trip.Finish(finishedAt)
 		if err != nil {
 			t.Fatalf("Finish() error = %v, want nil", err)
 		}
@@ -32,12 +31,12 @@ func TestFinish(t *testing.T) {
 
 	t.Run("completed trip cannot be completed again", func(t *testing.T) {
 		originalTime := finishedAt.Add(-time.Hour)
-		trip := &model.Trip{
+		trip := &Trip{
 			Status:     StatusCompleted,
 			FinishedAt: &originalTime,
 		}
 
-		err := Finish(trip, finishedAt)
+		err := trip.Finish(finishedAt)
 
 		if !errors.Is(err, domain.ErrTripCompleted) {
 			t.Fatalf("Finish() error = %v, want ErrTripCompleted", err)
