@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -30,25 +31,41 @@ func Load() (*Config, error) {
 	}
 
 	var err error
+
 	cfg.ShutdownTimeout, err = getDuration("SHUTDOWN_TIMEOUT", 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
 
-	cfg.DB = Database{
-		URL:      os.Getenv("DATABASE_URL"),
-		MaxConns: int32(getInt("DATABASE_MAX_CONNS", 10)),
-		MinConns: int32(getInt("DATABASE_MIN_CONNS", 2)),
+	cfg.DB.URL = os.Getenv("DATABASE_URL")
+
+	cfg.DB.MaxConns, err = getInt32("DATABASE_MAX_CONNS", 10)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.DB.MinConns, err = getInt32("DATABASE_MIN_CONNS", 2)
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.DB.MaxConns < 1 {
+		return nil, fmt.Errorf("DATABASE_MAX_CONNS must be at least 1")
+	}
+	if cfg.DB.MinConns < 0 || cfg.DB.MinConns > cfg.DB.MaxConns {
+		return nil, fmt.Errorf("DATABASE_MIN_CONNS must be between 0 and DATABASE_MAX_CONNS")
 	}
 
 	cfg.DB.MaxConnLifetime, err = getDuration("DATABASE_MAX_CONN_LIFETIME", 30*time.Minute)
 	if err != nil {
 		return nil, err
 	}
+
 	cfg.DB.ConnectTimeout, err = getDuration("DATABASE_CONNECT_TIMEOUT", 5*time.Second)
 	if err != nil {
 		return nil, err
 	}
+
 	cfg.DB.QueryTimeout, err = getDuration("DATABASE_QUERY_TIMEOUT", 3*time.Second)
 	if err != nil {
 		return nil, err
@@ -62,30 +79,40 @@ func Load() (*Config, error) {
 }
 
 func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
+
 	return fallback
 }
 
 func getDuration(key string, fallback time.Duration) (time.Duration, error) {
-	v := os.Getenv(key)
-	if v == "" {
+	value := os.Getenv(key)
+	if value == "" {
 		return fallback, nil
 	}
-	d, err := time.ParseDuration(v)
+
+	duration, err := time.ParseDuration(value)
 	if err != nil {
 		return 0, fmt.Errorf("invalid duration for %s: %w", key, err)
 	}
-	return d, nil
+	if duration <= 0 {
+		return 0, fmt.Errorf("%s must be positive", key)
+	}
+
+	return duration, nil
 }
 
-func getInt(key string, fallback int) int {
-	if v := os.Getenv(key); v != "" {
-		var n int
-		if _, err := fmt.Sscanf(v, "%d", &n); err == nil {
-			return n
-		}
+func getInt32(key string, fallback int32) (int32, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback, nil
 	}
-	return fallback
+
+	number, err := strconv.ParseInt(value, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid integer for %s: %w", key, err)
+	}
+
+	return int32(number), nil
 }

@@ -14,7 +14,7 @@ func TestProblem(t *testing.T) {
 	tests := []struct {
 		name       string
 		err        error
-		wantStatus int
+		wantStatus int32
 		wantCode   string
 	}{
 		{
@@ -53,10 +53,10 @@ func TestProblem(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			status, body := Problem(tt.err)
 
-			if status != tt.wantStatus {
+			if status != int(tt.wantStatus) {
 				t.Errorf("status = %d, want %d", status, tt.wantStatus)
 			}
-			if body.Status != int32(tt.wantStatus) {
+			if body.Status != tt.wantStatus {
 				t.Errorf("body status = %d, want %d", body.Status, tt.wantStatus)
 			}
 			if body.Code != tt.wantCode {

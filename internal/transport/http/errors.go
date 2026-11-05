@@ -8,19 +8,19 @@ import (
 	"github.com/sonncat/template/internal/http/domainerror"
 )
 
-// writeProblem отдаёт ошибку по RFC 9457 в application/problem+json
-func writeProblem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
+// writeProblem отдаёт ошибку некорректного запроса в application/problem+json
+func writeProblem(w http.ResponseWriter, r *http.Request, detail string) {
 	problem := api.Problem{
 		Type:     "about:blank",
-		Title:    http.StatusText(status),
-		Status:   int32(status),
+		Title:    http.StatusText(http.StatusBadRequest),
+		Status:   http.StatusBadRequest,
 		Detail:   &detail,
 		Instance: &r.URL.Path,
-		Code:     code,
+		Code:     "invalid_request",
 	}
 
 	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
+	w.WriteHeader(http.StatusBadRequest)
 	_ = json.NewEncoder(w).Encode(problem)
 }
 

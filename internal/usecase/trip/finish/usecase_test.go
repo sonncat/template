@@ -39,7 +39,6 @@ func TestExecute(t *testing.T) {
 
 		usecase := New(repo, tx)
 		got, err := usecase.Execute(context.Background(), id)
-
 		if err != nil {
 			t.Fatalf("Execute() error = %v, want nil", err)
 		}

@@ -1,4 +1,4 @@
-.PHONY: generate migrate migrate-down migrate-status run build test test-integration
+.PHONY: generate migrate migrate-down migrate-status run build test test-integration lint
 
 generate:
 	GOSUMDB=sum.golang.org go tool oapi-codegen -generate types,chi-server -package api -include-operation-ids createTrip,getTrip,finishTrip,health,ready -o api/api.gen.go contracts/openapi/trip-service.openapi.yaml
@@ -24,3 +24,6 @@ test:
 
 test-integration:
 	set -a; . ./.env; set +a; GOSUMDB=sum.golang.org go test -race -count=2 -tags=integration ./internal/repository/...
+
+lint:
+	GOSUMDB=sum.golang.org ./bin/golangci-lint run ./...

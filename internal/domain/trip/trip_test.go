@@ -16,7 +16,6 @@ func TestFinish(t *testing.T) {
 		trip := &model.Trip{Status: StatusActive}
 
 		err := Finish(trip, finishedAt)
-
 		if err != nil {
 			t.Fatalf("Finish() error = %v, want nil", err)
 		}
