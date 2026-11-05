@@ -13,8 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/sonncat/template/internal/domain"
+	"github.com/sonncat/template/internal/infra/postgres/transaction"
 	"github.com/sonncat/template/internal/model"
-	"github.com/sonncat/template/internal/txmanager"
 )
 
 type TripsRepository struct {

@@ -12,12 +12,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/sonncat/template/internal/domain"
+	"github.com/sonncat/template/internal/infra/postgres/transaction"
 	"github.com/sonncat/template/internal/model"
-	"github.com/sonncat/template/internal/repository"
-	"github.com/sonncat/template/internal/txmanager"
+	"github.com/sonncat/template/internal/repository/trip"
 )
 
-func TestCreateTripTransactionRollback(t *testing.T) {
+func TestFinishTrip(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		t.Fatal("DATABASE_URL is required for integration tests")
@@ -30,9 +31,6 @@ func TestCreateTripTransactionRollback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create database pool: %v", err)
 	}
-
-	// Очистка выполняется в обратном порядке регистрации:
-	// сначала удаляем данные теста, затем закрываем пул.
 	t.Cleanup(pool.Close)
 
 	repo := repository.NewTripsRepository(pool)
@@ -48,7 +46,7 @@ func TestCreateTripTransactionRollback(t *testing.T) {
 		EndLongitude:   30.3626,
 		Price:          1450,
 		Status:         "active",
-		StartedAt:      time.Now().UTC(),
+		StartedAt:      time.Now().UTC().Add(-time.Minute),
 	}
 
 	t.Cleanup(func() {
@@ -60,38 +58,40 @@ func TestCreateTripTransactionRollback(t *testing.T) {
 		}
 	})
 
-	expectedErr := errors.New("force transaction rollback")
+	err = tx.Do(ctx, func(txCtx context.Context) error {
+		return repo.Create(txCtx, trip)
+	})
+	if err != nil {
+		t.Fatalf("create trip: %v", err)
+	}
+
+	// PostgreSQL хранит время с точностью до микросекунд
+	finishedAt := time.Now().UTC().Truncate(time.Microsecond)
+
+	var finished *model.Trip
+	err = tx.Do(ctx, func(txCtx context.Context) error {
+		var finishErr error
+		finished, finishErr = repo.Finish(txCtx, trip.ID, finishedAt)
+		return finishErr
+	})
+	if err != nil {
+		t.Fatalf("finish trip: %v", err)
+	}
+	if finished.Status != "completed" {
+		t.Errorf("status = %q, want completed", finished.Status)
+	}
+	if finished.FinishedAt == nil {
+		t.Fatal("finished_at is nil")
+	}
+	if !finished.FinishedAt.Equal(finishedAt) {
+		t.Errorf("finished_at = %v, want %v", *finished.FinishedAt, finishedAt)
+	}
 
 	err = tx.Do(ctx, func(txCtx context.Context) error {
-		if err := repo.Create(txCtx, trip); err != nil {
-			return err
-		}
-
-		return expectedErr
+		_, finishErr := repo.Finish(txCtx, trip.ID, finishedAt)
+		return finishErr
 	})
-	if !errors.Is(err, expectedErr) {
-		t.Fatalf("transaction error = %v, want %v", err, expectedErr)
-	}
-
-	var tripsCount int
-	err = pool.QueryRow(ctx, "SELECT count(*) FROM trips WHERE id = $1", trip.ID).Scan(&tripsCount)
-	if err != nil {
-		t.Fatalf("count trips: %v", err)
-	}
-	if tripsCount != 0 {
-		t.Errorf("trips count = %d, want 0", tripsCount)
-	}
-
-	var historyCount int
-	err = pool.QueryRow(
-		ctx,
-		"SELECT count(*) FROM trip_status_history WHERE trip_id = $1",
-		trip.ID,
-	).Scan(&historyCount)
-	if err != nil {
-		t.Fatalf("count trip history: %v", err)
-	}
-	if historyCount != 0 {
-		t.Errorf("history count = %d, want 0", historyCount)
+	if !errors.Is(err, domain.ErrTripCompleted) {
+		t.Errorf("second finish error = %v, want ErrTripCompleted", err)
 	}
 }
