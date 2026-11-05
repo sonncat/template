@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -32,12 +33,11 @@ func (w *responseWriter) Write(body []byte) (int, error) {
 	return w.ResponseWriter.Write(body)
 }
 
-// Unwrap позволяет стандартным HTTP-инструментам получить исходный writer
 func (w *responseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
-// Logging записывает результат HTTP-запроса и уточняет имя его спана
+// Logging записывает результат запроса и добавляет шаблон маршрута к телеметрии
 func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +60,11 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 			if span.IsRecording() {
 				span.SetName(r.Method + " " + route)
 				span.SetAttributes(attribute.String("http.route", route))
+			}
+
+			// Labeler передаёт шаблон маршрута в HTTP-метрики otelhttp
+			if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
+				labeler.Add(attribute.String("http.route", route))
 			}
 
 			attrs := []any{

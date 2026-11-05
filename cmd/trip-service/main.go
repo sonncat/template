@@ -80,18 +80,29 @@ func main() {
 	)
 
 	r := chi.NewRouter()
+
+	activeRequests, err := middleware.ActiveRequests(
+		telemetryProviders.Meter.Meter("trip-service/http"),
+		r,
+	)
+	if err != nil {
+		logger.Error("initialize HTTP metrics", "error", err)
+		return
+	}
+
 	r.Use(middleware.Logging(logger))
+	r.Use(activeRequests)
 
 	api.HandlerWithOptions(h, api.ChiServerOptions{
 		BaseRouter: r,
 		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			w.Header().Set("Content-Type", "application/problem+json")
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"type":"about:blank","title":"Bad Request","status":400,"detail":"invalid path parameters","code":"invalid_request"}`))
+			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Bad Request","status":400,"detail":"invalid path parameters","code":"invalid_request"}`))
 		},
 	})
 
-	instrumentedHandler := otelhttp.NewHandler(
+	tracedHandler := otelhttp.NewHandler(
 		r,
 		"HTTP request",
 		otelhttp.WithTracerProvider(telemetryProviders.Tracer),
@@ -100,7 +111,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           instrumentedHandler,
+		Handler:           middleware.Recover(logger)(tracedHandler),
 		ReadTimeout:       5 * time.Second,
 		ReadHeaderTimeout: 2 * time.Second,
 		WriteTimeout:      10 * time.Second,
