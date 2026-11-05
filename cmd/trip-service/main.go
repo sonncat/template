@@ -67,9 +67,18 @@ func main() {
 	txManager := txmanager.NewPgxTxManager(pool)
 	tripsRepo := repository.NewTripsRepository(pool)
 
-	createTrip := createtrip.New(tripsRepo, txManager)
+	tripEvents, err := telemetry.NewTripEvents(
+		telemetryProviders.Meter.Meter("trip-service/trips"),
+		logger,
+	)
+	if err != nil {
+		logger.Error("initialize trip metrics", "error", err)
+		return
+	}
+
+	createTrip := tripEvents.ObserveCreate(createtrip.New(tripsRepo, txManager))
 	getTrip := gettrip.New(tripsRepo)
-	finishTrip := finishtrip.New(tripsRepo, txManager)
+	finishTrip := tripEvents.ObserveFinish(finishtrip.New(tripsRepo, txManager))
 
 	h := httptransport.NewHandler(
 		pool,
