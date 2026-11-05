@@ -47,43 +47,6 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, _ api.Creat
 		return
 	}
 
-	if body.UserId == uuid.Nil {
-		writeValidationError(w, r, "user_id", "is required")
-		return
-	}
-
-	if body.DriverId == uuid.Nil {
-		writeValidationError(w, r, "driver_id", "is required")
-		return
-	}
-
-	if body.Price <= 0 {
-		writeValidationError(w, r, "price", "is required and must be greater than zero")
-		return
-	}
-
-	if body.StartPoint.Latitude == 0 && body.StartPoint.Longitude == 0 {
-		writeValidationError(w, r, "start_point", "is required")
-		return
-	}
-
-	if body.EndPoint.Latitude == 0 && body.EndPoint.Longitude == 0 {
-		writeValidationError(w, r, "end_point", "is required")
-		return
-	}
-
-	if body.StartPoint.Latitude < -90 || body.StartPoint.Latitude > 90 ||
-		body.StartPoint.Longitude < -180 || body.StartPoint.Longitude > 180 {
-		writeValidationError(w, r, "start_point", "coordinates are out of range")
-		return
-	}
-
-	if body.EndPoint.Latitude < -90 || body.EndPoint.Latitude > 90 ||
-		body.EndPoint.Longitude < -180 || body.EndPoint.Longitude > 180 {
-		writeValidationError(w, r, "end_point", "coordinates are out of range")
-		return
-	}
-
 	trip := &model.Trip{
 		ID:             uuid.New(),
 		UserID:         body.UserId,
