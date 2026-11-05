@@ -4,11 +4,18 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/sonncat/template/internal/config"
 )
 
-func NewPool(ctx context.Context, cfg config.Database) (*pgxpool.Pool, error) {
+func NewPool(
+	ctx context.Context,
+	cfg config.Database,
+	tracerProvider trace.TracerProvider,
+) (*pgxpool.Pool, error) {
 	poolCfg, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
@@ -18,6 +25,9 @@ func NewPool(ctx context.Context, cfg config.Database) (*pgxpool.Pool, error) {
 	poolCfg.MinConns = cfg.MinConns
 	poolCfg.MaxConnLifetime = cfg.MaxConnLifetime
 	poolCfg.ConnConfig.ConnectTimeout = cfg.ConnectTimeout
+	poolCfg.ConnConfig.Tracer = otelpgx.NewTracer(
+		otelpgx.WithTracerProvider(tracerProvider),
+	)
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {

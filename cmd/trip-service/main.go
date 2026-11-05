@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,10 +11,13 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/sonncat/template/api"
 	"github.com/sonncat/template/internal/config"
 	"github.com/sonncat/template/internal/db"
+	"github.com/sonncat/template/internal/http/middleware"
+	"github.com/sonncat/template/internal/infra/telemetry"
 	"github.com/sonncat/template/internal/repository"
 	httptransport "github.com/sonncat/template/internal/transport/http"
 	"github.com/sonncat/template/internal/txmanager"
@@ -28,11 +32,35 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
+	var logLevel slog.Level
+	if err := logLevel.UnmarshalText([]byte(cfg.LogLevel)); err != nil {
+		log.Fatalf("invalid LOG_LEVEL: %v", err)
+	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	})).With("service", "trip-service")
+
+	telemetryProviders, err := telemetry.New(context.Background())
+	if err != nil {
+		logger.Error("initialize telemetry", "error", err)
+		return
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		defer cancel()
+
+		if err := telemetryProviders.Shutdown(ctx); err != nil {
+			logger.Error("shutdown telemetry", "error", err)
+		}
+	}()
+
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.DB.ConnectTimeout)
-	pool, err := db.NewPool(ctx, cfg.DB)
+	pool, err := db.NewPool(ctx, cfg.DB, telemetryProviders.Tracer)
 	cancel()
 	if err != nil {
-		log.Fatalf("db: %v", err)
+		logger.Error("connect to database", "error", err)
+		return
 	}
 	defer pool.Close()
 
@@ -52,6 +80,7 @@ func main() {
 	)
 
 	r := chi.NewRouter()
+	r.Use(middleware.Logging(logger))
 
 	api.HandlerWithOptions(h, api.ChiServerOptions{
 		BaseRouter: r,
@@ -62,9 +91,16 @@ func main() {
 		},
 	})
 
+	instrumentedHandler := otelhttp.NewHandler(
+		r,
+		"HTTP request",
+		otelhttp.WithTracerProvider(telemetryProviders.Tracer),
+		otelhttp.WithMeterProvider(telemetryProviders.Meter),
+	)
+
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           r,
+		Handler:           instrumentedHandler,
 		ReadTimeout:       5 * time.Second,
 		ReadHeaderTimeout: 2 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -72,9 +108,9 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("listening on %s", cfg.HTTPAddr)
+		logger.Info("server listening", "address", cfg.HTTPAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("server error: %v", err)
+			logger.Error("server error", "error", err)
 		}
 	}()
 
@@ -86,7 +122,7 @@ func main() {
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("shutdown: %v", err)
+		logger.Error("shutdown server", "error", err)
 	}
-	log.Println("stopped")
+	logger.Info("server stopped")
 }
