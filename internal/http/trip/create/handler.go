@@ -67,7 +67,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
-	status, problem := domainerror.Problem(err)
+	status, problem := domainerror.ProblemForRequest(r, err)
 	problem.Instance = &r.URL.Path
 
 	w.Header().Set("Content-Type", "application/problem+json")

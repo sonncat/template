@@ -8,6 +8,7 @@ import (
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -65,6 +66,10 @@ func (t *queryTracer) TraceQueryEnd(
 		}
 		if data.Err != nil {
 			attrs = append(attrs, attribute.String("error.type", "database_error"))
+
+			span := trace.SpanFromContext(ctx)
+			span.SetStatus(codes.Error, "database error")
+			span.SetAttributes(attribute.String("error.type", "database_error"))
 		}
 
 		t.duration.Record(

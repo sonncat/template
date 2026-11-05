@@ -9,6 +9,8 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/sonncat/template/internal/http/domainerror"
 )
 
 type responseWriter struct {
@@ -44,6 +46,7 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 			started := time.Now()
 			writer := &responseWriter{ResponseWriter: w}
 
+			r = r.WithContext(domainerror.WithLogger(r.Context(), logger))
 			next.ServeHTTP(writer, r)
 
 			status := writer.status
@@ -62,7 +65,6 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 				span.SetAttributes(attribute.String("http.route", route))
 			}
 
-			// Labeler передаёт шаблон маршрута в HTTP-метрики otelhttp
 			if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
 				labeler.Add(attribute.String("http.route", route))
 			}

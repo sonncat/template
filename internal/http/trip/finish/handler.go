@@ -34,7 +34,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request, id uuid.UUID) {
 
 	trip, err := h.usecase.Execute(ctx, id)
 	if err != nil {
-		status, problem := domainerror.Problem(err)
+		status, problem := domainerror.ProblemForRequest(r, err)
 		problem.Instance = &r.URL.Path
 
 		w.Header().Set("Content-Type", "application/problem+json")
