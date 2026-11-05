@@ -53,13 +53,25 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 	txManager := txmanager.NewPgxTxManager(pool)
 	tripsRepo := repository.NewTripsRepository(pool)
 
+	err = telemetry.RegisterActiveTrips(
+		telemetryProviders.Meter.Meter("trip-service/trips"),
+		tripsRepo,
+		cfg.DB.QueryTimeout,
+		logger,
+	)
+	if err != nil {
+		_ = telemetryProviders.Shutdown(ctx)
+		pool.Close()
+		return nil, fmt.Errorf("initialize active trips metric: %w", err)
+	}
+
 	tripEvents, err := telemetry.NewTripEvents(
 		telemetryProviders.Meter.Meter("trip-service/trips"),
 		logger,
 	)
 	if err != nil {
-		pool.Close()
 		_ = telemetryProviders.Shutdown(ctx)
+		pool.Close()
 		return nil, fmt.Errorf("initialize trip metrics: %w", err)
 	}
 
@@ -82,15 +94,13 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 		router,
 	)
 	if err != nil {
-		pool.Close()
 		_ = telemetryProviders.Shutdown(ctx)
+		pool.Close()
 		return nil, fmt.Errorf("initialize HTTP metrics: %w", err)
 	}
 
 	router.Use(middleware.Logging(logger))
 	router.Use(activeRequests)
-
-	// Внутренний Recover позволяет Logging и Metrics увидеть ответ 500
 	router.Use(middleware.Recover(logger))
 
 	api.HandlerWithOptions(handler, api.ChiServerOptions{
@@ -116,11 +126,12 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 	}, nil
 }
 
-// Close закрывает пул базы и отправляет оставшуюся телеметрию
+// Close останавливает сбор телеметрии и закрывает пул базы
 func (c *Container) Close(ctx context.Context) error {
+	err := c.telemetry.Shutdown(ctx)
 	c.pool.Close()
 
-	if err := c.telemetry.Shutdown(ctx); err != nil {
+	if err != nil {
 		return fmt.Errorf("shutdown telemetry: %w", err)
 	}
 
