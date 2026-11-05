@@ -1,11 +1,11 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
-	"context"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -40,25 +40,37 @@ func NewHandler(
 
 func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.CreateTripParams) {
 	var body api.TripData
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "malformed JSON body")
+
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields() // запрещаем лишние поля в JSON
+	if err := dec.Decode(&body); err != nil {
+		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "malformed JSON body or unknown fields")
 		return
 	}
 
-	// Валидация: user_id и driver_id непустые UUID, координаты в диапазонах, price >= 0.
 	if body.UserId == (openapi_types.UUID{}) || body.DriverId == (openapi_types.UUID{}) {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "user_id and driver_id are required")
 		return
 	}
+	if body.Price <= 0 {
+		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "price is required and must be > 0")
+		return
+	}
+	if body.StartPoint.Latitude == 0 && body.StartPoint.Longitude == 0 {
+		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "start_point is required")
+		return
+	}
+	if body.EndPoint.Latitude == 0 && body.EndPoint.Longitude == 0 {
+		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "end_point is required")
+		return
+	}
+
+	// Валидация диапазонов
 	if body.StartPoint.Latitude < -90 || body.StartPoint.Latitude > 90 ||
 		body.EndPoint.Latitude < -90 || body.EndPoint.Latitude > 90 ||
 		body.StartPoint.Longitude < -180 || body.StartPoint.Longitude > 180 ||
 		body.EndPoint.Longitude < -180 || body.EndPoint.Longitude > 180 {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "coordinates out of range")
-		return
-	}
-	if body.Price < 0 {
-		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "price must be >= 0")
 		return
 	}
 
@@ -90,7 +102,6 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.
 		return
 	}
 
-	// Перечитываем поездку, чтобы отдать актуальные started_at/created_at.
 	created, err := h.trips.GetByID(ctx, trip.ID)
 	if err != nil {
 		writeProblem(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
@@ -175,14 +186,14 @@ func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 func toAPITrip(t *repository.Trip) api.Trip {
 	status := api.TripStatus(t.Status)
 	return api.Trip{
-		Id:             openapi_types.UUID(t.ID),
-		UserId:         openapi_types.UUID(t.UserID),
-		DriverId:       openapi_types.UUID(t.DriverID),
-		StartPoint:     api.Coordinates{Latitude: t.StartLatitude, Longitude: t.StartLongitude},
-		EndPoint:       api.Coordinates{Latitude: t.EndLatitude, Longitude: t.EndLongitude},
-		Price:          t.Price,
-		Status:         status,
-		StartedAt:      t.StartedAt,
-		FinishedAt:     t.FinishedAt,
+		Id:         openapi_types.UUID(t.ID),
+		UserId:     openapi_types.UUID(t.UserID),
+		DriverId:   openapi_types.UUID(t.DriverID),
+		StartPoint: api.Coordinates{Latitude: t.StartLatitude, Longitude: t.StartLongitude},
+		EndPoint:   api.Coordinates{Latitude: t.EndLatitude, Longitude: t.EndLongitude},
+		Price:      t.Price,
+		Status:     status,
+		StartedAt:  t.StartedAt,
+		FinishedAt: t.FinishedAt,
 	}
 }

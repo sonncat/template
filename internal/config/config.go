@@ -25,18 +25,33 @@ type Database struct {
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		HTTPAddr:        getEnv("HTTP_ADDR", ":8080"),
-		LogLevel:        getEnv("LOG_LEVEL", "info"),
-		ShutdownTimeout: getDuration("SHUTDOWN_TIMEOUT", 10*time.Second),
+		HTTPAddr: getEnv("HTTP_ADDR", ":8080"),
+		LogLevel: getEnv("LOG_LEVEL", "info"),
+	}
+
+	var err error
+	cfg.ShutdownTimeout, err = getDuration("SHUTDOWN_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return nil, err
 	}
 
 	cfg.DB = Database{
-		URL:             os.Getenv("DATABASE_URL"),
-		MaxConns:        int32(getInt("DATABASE_MAX_CONNS", 10)),
-		MinConns:        int32(getInt("DATABASE_MIN_CONNS", 2)),
-		MaxConnLifetime: getDuration("DATABASE_MAX_CONN_LIFETIME", 30*time.Minute),
-		ConnectTimeout:  getDuration("DATABASE_CONNECT_TIMEOUT", 5*time.Second),
-		QueryTimeout:    getDuration("DATABASE_QUERY_TIMEOUT", 3*time.Second),
+		URL:      os.Getenv("DATABASE_URL"),
+		MaxConns: int32(getInt("DATABASE_MAX_CONNS", 10)),
+		MinConns: int32(getInt("DATABASE_MIN_CONNS", 2)),
+	}
+
+	cfg.DB.MaxConnLifetime, err = getDuration("DATABASE_MAX_CONN_LIFETIME", 30*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	cfg.DB.ConnectTimeout, err = getDuration("DATABASE_CONNECT_TIMEOUT", 5*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	cfg.DB.QueryTimeout, err = getDuration("DATABASE_QUERY_TIMEOUT", 3*time.Second)
+	if err != nil {
+		return nil, err
 	}
 
 	if cfg.DB.URL == "" {
@@ -53,13 +68,16 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-func getDuration(key string, fallback time.Duration) time.Duration {
-	if v := os.Getenv(key); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			return d
-		}
+func getDuration(key string, fallback time.Duration) (time.Duration, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback, nil
 	}
-	return fallback
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid duration for %s: %w", key, err)
+	}
+	return d, nil
 }
 
 func getInt(key string, fallback int) int {

@@ -64,7 +64,10 @@ func (r *TripsRepository) Create(ctx context.Context, t *Trip) error {
 	if _, err := exec.Exec(ctx, sql, args...); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return domain.ErrDriverBusy
+			// Проверяем, что упало именно ограничение на активные поездки водителя
+			if pgErr.ConstraintName == "trips_driver_active_uniq" {
+				return domain.ErrDriverBusy
+			}
 		}
 		return fmt.Errorf("insert trip: %w", err)
 	}

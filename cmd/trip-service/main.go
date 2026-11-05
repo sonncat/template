@@ -38,7 +38,15 @@ func main() {
 	h := httptransport.NewHandler(pool, txManager, tripsRepo, cfg.DB.QueryTimeout)
 
 	r := chi.NewRouter()
-	api.HandlerFromMux(h, r)
+
+	api.HandlerWithOptions(h, api.ChiServerOptions{
+		BaseRouter: r,
+		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"type":"about:blank","title":"Bad Request","status":400,"detail":"invalid path parameters","code":"invalid_request"}`))
+		},
+	})
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -52,7 +60,7 @@ func main() {
 	go func() {
 		log.Printf("listening on %s", cfg.HTTPAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server: %v", err)
+			log.Printf("server error: %v", err) // не Fatalf, чтобы сработали defer
 		}
 	}()
 
