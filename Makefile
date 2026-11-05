@@ -1,4 +1,4 @@
-.PHONY: generate migrate migrate-down migrate-status run build test
+.PHONY: generate migrate migrate-down migrate-status run build test test-integration
 
 generate:
 	GOSUMDB=sum.golang.org go tool oapi-codegen -generate types,chi-server -package api -include-operation-ids createTrip,getTrip,finishTrip,health,ready -o api/api.gen.go contracts/openapi/trip-service.openapi.yaml
@@ -19,4 +19,8 @@ build:
 	GOSUMDB=sum.golang.org go build -o bin/trip-service ./cmd/trip-service
 
 test:
-	GOSUMDB=sum.golang.org go test -race ./...
+	GOSUMDB=sum.golang.org go test -race -count=2 -coverpkg=./internal/domain/...,./internal/usecase/... -coverprofile=coverage.out ./...
+	GOSUMDB=sum.golang.org go tool cover -func=coverage.out
+
+test-integration:
+	set -a; . ./.env; set +a; GOSUMDB=sum.golang.org go test -race -count=2 -tags=integration ./internal/repository/...
