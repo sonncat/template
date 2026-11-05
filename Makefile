@@ -13,7 +13,7 @@ migrate-status:
 	set -a; . ./.env; set +a; GOSUMDB=sum.golang.org go tool goose -dir migrations postgres "$${DATABASE_URL}" status
 
 run:
-	set -a; . ./.env; set +a; GOSUMDB=sum.golang.org go run ./cmd/trip-service
+	set -a; . ./.env.example; . ./.env; set +a; GOSUMDB=sum.golang.org go run ./cmd/trip-service
 
 build:
 	GOSUMDB=sum.golang.org go build -o bin/trip-service ./cmd/trip-service

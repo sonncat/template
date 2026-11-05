@@ -18,17 +18,15 @@ type Providers struct {
 	Meter  *metric.MeterProvider
 }
 
-// New создаёт провайдеры и экспортёры телеметрии
-// Настройки экспортёров читаются из переменных окружения OpenTelemetry
+// New создаёт провайдеры и экспортёры телеметрии.
+// Стандартные настройки OpenTelemetry читаются из переменных окружения
 func New(ctx context.Context) (*Providers, error) {
 	res, err := resource.New(
 		ctx,
 		resource.WithAttributes(
-			attribute.String("service.name", "trip-service"),
-			attribute.String("service.namespace", "tripgo"),
 			attribute.String("service.version", "dev"),
-			attribute.String("deployment.environment", "local"),
 		),
+		resource.WithFromEnv(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create telemetry resource: %w", err)
