@@ -4,24 +4,16 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/sonncat/template/api"
+	"github.com/sonncat/template/internal/domain"
 	"github.com/sonncat/template/internal/http/domainerror"
 )
 
-// writeProblem отдаёт ошибку некорректного запроса в application/problem+json
-func writeProblem(w http.ResponseWriter, r *http.Request, detail string) {
-	problem := api.Problem{
-		Type:     "about:blank",
-		Title:    http.StatusText(http.StatusBadRequest),
-		Status:   http.StatusBadRequest,
-		Detail:   &detail,
-		Instance: &r.URL.Path,
-		Code:     "invalid_request",
-	}
-
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(http.StatusBadRequest)
-	_ = json.NewEncoder(w).Encode(problem)
+// writeValidationError передаёт ошибку поля в общий переводчик ошибок
+func writeValidationError(w http.ResponseWriter, r *http.Request, field, message string) {
+	writeDomainError(w, r, &domain.ValidationError{
+		Field:   field,
+		Message: message,
+	})
 }
 
 // writeDomainError переводит ошибку приложения в HTTP-ответ

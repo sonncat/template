@@ -14,7 +14,13 @@ func Problem(err error) (int, api.Problem) {
 	code := "internal_error"
 	detail := "Internal server error"
 
+	var validationErr *domain.ValidationError
+
 	switch {
+	case errors.As(err, &validationErr):
+		status = http.StatusBadRequest
+		code = "invalid_request"
+		detail = validationErr.Error()
 	case errors.Is(err, domain.ErrTripNotFound):
 		status = http.StatusNotFound
 		code = "trip_not_found"

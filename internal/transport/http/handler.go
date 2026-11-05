@@ -43,35 +43,44 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, _ api.Creat
 	dec.DisallowUnknownFields()
 
 	if err := dec.Decode(&body); err != nil {
-		writeProblem(w, r, "malformed JSON body or unknown fields")
+		writeValidationError(w, r, "body", "malformed JSON body or unknown fields")
 		return
 	}
 
-	if body.UserId == uuid.Nil || body.DriverId == uuid.Nil {
-		writeProblem(w, r, "user_id and driver_id are required")
+	if body.UserId == uuid.Nil {
+		writeValidationError(w, r, "user_id", "is required")
+		return
+	}
+
+	if body.DriverId == uuid.Nil {
+		writeValidationError(w, r, "driver_id", "is required")
 		return
 	}
 
 	if body.Price <= 0 {
-		writeProblem(w, r, "price is required and must be > 0")
+		writeValidationError(w, r, "price", "is required and must be greater than zero")
 		return
 	}
 
 	if body.StartPoint.Latitude == 0 && body.StartPoint.Longitude == 0 {
-		writeProblem(w, r, "start_point is required")
+		writeValidationError(w, r, "start_point", "is required")
 		return
 	}
 
 	if body.EndPoint.Latitude == 0 && body.EndPoint.Longitude == 0 {
-		writeProblem(w, r, "end_point is required")
+		writeValidationError(w, r, "end_point", "is required")
 		return
 	}
 
 	if body.StartPoint.Latitude < -90 || body.StartPoint.Latitude > 90 ||
-		body.EndPoint.Latitude < -90 || body.EndPoint.Latitude > 90 ||
-		body.StartPoint.Longitude < -180 || body.StartPoint.Longitude > 180 ||
+		body.StartPoint.Longitude < -180 || body.StartPoint.Longitude > 180 {
+		writeValidationError(w, r, "start_point", "coordinates are out of range")
+		return
+	}
+
+	if body.EndPoint.Latitude < -90 || body.EndPoint.Latitude > 90 ||
 		body.EndPoint.Longitude < -180 || body.EndPoint.Longitude > 180 {
-		writeProblem(w, r, "coordinates out of range")
+		writeValidationError(w, r, "end_point", "coordinates are out of range")
 		return
 	}
 
