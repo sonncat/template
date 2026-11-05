@@ -18,6 +18,7 @@ import (
 	httptransport "github.com/sonncat/template/internal/transport/http"
 	"github.com/sonncat/template/internal/txmanager"
 	createtrip "github.com/sonncat/template/internal/usecase/trip/create"
+	finishtrip "github.com/sonncat/template/internal/usecase/trip/finish"
 	gettrip "github.com/sonncat/template/internal/usecase/trip/get"
 )
 
@@ -40,13 +41,13 @@ func main() {
 
 	createTrip := createtrip.New(tripsRepo, txManager)
 	getTrip := gettrip.New(tripsRepo)
+	finishTrip := finishtrip.New(tripsRepo, txManager)
 
 	h := httptransport.NewHandler(
 		pool,
-		txManager,
-		tripsRepo,
 		createTrip,
 		getTrip,
+		finishTrip,
 		cfg.DB.QueryTimeout,
 	)
 

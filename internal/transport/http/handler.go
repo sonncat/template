@@ -3,7 +3,6 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"time"
 
@@ -12,35 +11,29 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/sonncat/template/api"
-	"github.com/sonncat/template/internal/domain"
 	"github.com/sonncat/template/internal/model"
-	"github.com/sonncat/template/internal/repository"
-	"github.com/sonncat/template/internal/txmanager"
 )
 
 type Handler struct {
 	pool         *pgxpool.Pool
-	txManager    txmanager.TxManager
-	trips        *repository.TripsRepository
 	createTrip   createTripUseCase
 	getTrip      getTripUseCase
+	finishTrip   finishTripUseCase
 	queryTimeout time.Duration
 }
 
 func NewHandler(
 	pool *pgxpool.Pool,
-	txManager txmanager.TxManager,
-	trips *repository.TripsRepository,
 	createTrip createTripUseCase,
 	getTrip getTripUseCase,
+	finishTrip finishTripUseCase,
 	queryTimeout time.Duration,
 ) *Handler {
 	return &Handler{
 		pool:         pool,
-		txManager:    txManager,
-		trips:        trips,
 		createTrip:   createTrip,
 		getTrip:      getTrip,
+		finishTrip:   finishTrip,
 		queryTimeout: queryTimeout,
 	}
 }
@@ -102,12 +95,7 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.
 
 	created, err := h.createTrip.Execute(ctx, trip)
 	if err != nil {
-		if errors.Is(err, domain.ErrDriverBusy) {
-			writeProblem(w, r, http.StatusConflict, "driver_busy", "Driver already has an active trip")
-			return
-		}
-
-		writeProblem(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+		writeDomainError(w, r, err)
 		return
 	}
 
@@ -123,12 +111,7 @@ func (h *Handler) GetTrip(w http.ResponseWriter, r *http.Request, tripId api.Tri
 
 	t, err := h.getTrip.Execute(ctx, uuid.UUID(tripId))
 	if err != nil {
-		if errors.Is(err, domain.ErrTripNotFound) {
-			writeProblem(w, r, http.StatusNotFound, "trip_not_found", "Trip was not found")
-			return
-		}
-
-		writeProblem(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+		writeDomainError(w, r, err)
 		return
 	}
 
@@ -141,26 +124,9 @@ func (h *Handler) FinishTrip(w http.ResponseWriter, r *http.Request, tripId api.
 	ctx, cancel := context.WithTimeout(r.Context(), h.queryTimeout)
 	defer cancel()
 
-	var finished *model.Trip
-
-	err := h.txManager.Do(ctx, func(ctx context.Context) error {
-		t, err := h.trips.Finish(ctx, uuid.UUID(tripId))
-		if err != nil {
-			return err
-		}
-
-		finished = t
-		return nil
-	})
+	finished, err := h.finishTrip.Execute(ctx, uuid.UUID(tripId))
 	if err != nil {
-		switch {
-		case errors.Is(err, domain.ErrTripNotFound):
-			writeProblem(w, r, http.StatusNotFound, "trip_not_found", "Trip was not found")
-		case errors.Is(err, domain.ErrTripCompleted):
-			writeProblem(w, r, http.StatusConflict, "trip_completed", "Operation is not allowed for a completed trip")
-		default:
-			writeProblem(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
-		}
+		writeDomainError(w, r, err)
 		return
 	}
 
