@@ -2,22 +2,25 @@ package http
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/sonncat/template/api"
-	"github.com/sonncat/template/internal/model"
+	createtransport "github.com/sonncat/template/internal/http/trip/create"
+	finishtransport "github.com/sonncat/template/internal/http/trip/finish"
+	gettransport "github.com/sonncat/template/internal/http/trip/get"
 )
 
+// Handler связывает сгенерированный OpenAPI-интерфейс с обработчиками действий
 type Handler struct {
 	database     databasePinger
-	createTrip   createTripUseCase
-	getTrip      getTripUseCase
-	finishTrip   finishTripUseCase
+	createTrip   *createtransport.Handler
+	getTrip      *gettransport.Handler
+	finishTrip   *finishtransport.Handler
 	queryTimeout time.Duration
 }
 
+// NewHandler создаёт OpenAPI-адаптер и обработчики действий
 func NewHandler(
 	database databasePinger,
 	createTrip createTripUseCase,
@@ -27,77 +30,23 @@ func NewHandler(
 ) *Handler {
 	return &Handler{
 		database:     database,
-		createTrip:   createTrip,
-		getTrip:      getTrip,
-		finishTrip:   finishTrip,
+		createTrip:   createtransport.New(createTrip, queryTimeout),
+		getTrip:      gettransport.New(getTrip, queryTimeout),
+		finishTrip:   finishtransport.New(finishTrip, queryTimeout),
 		queryTimeout: queryTimeout,
 	}
 }
 
 func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, _ api.CreateTripParams) {
-	var body api.TripData
-
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-
-	if err := dec.Decode(&body); err != nil {
-		writeValidationError(w, r, "body", "malformed JSON body or unknown fields")
-		return
-	}
-
-	trip := &model.Trip{
-		UserID:         body.UserId,
-		DriverID:       body.DriverId,
-		StartLatitude:  body.StartPoint.Latitude,
-		StartLongitude: body.StartPoint.Longitude,
-		EndLatitude:    body.EndPoint.Latitude,
-		EndLongitude:   body.EndPoint.Longitude,
-		Price:          body.Price,
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), h.queryTimeout)
-	defer cancel()
-
-	created, err := h.createTrip.Execute(ctx, trip)
-	if err != nil {
-		writeDomainError(w, r, err)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Location", "/api/v1/trips/"+created.ID.String())
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(toAPITrip(created))
+	h.createTrip.Handle(w, r)
 }
 
 func (h *Handler) GetTrip(w http.ResponseWriter, r *http.Request, tripID api.TripId) {
-	ctx, cancel := context.WithTimeout(r.Context(), h.queryTimeout)
-	defer cancel()
-
-	trip, err := h.getTrip.Execute(ctx, tripID)
-	if err != nil {
-		writeDomainError(w, r, err)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(toAPITrip(trip))
+	h.getTrip.Handle(w, r, tripID)
 }
 
 func (h *Handler) FinishTrip(w http.ResponseWriter, r *http.Request, tripID api.TripId) {
-	ctx, cancel := context.WithTimeout(r.Context(), h.queryTimeout)
-	defer cancel()
-
-	finished, err := h.finishTrip.Execute(ctx, tripID)
-	if err != nil {
-		writeDomainError(w, r, err)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(toAPITrip(finished))
+	h.finishTrip.Handle(w, r, tripID)
 }
 
 func (h *Handler) Health(w http.ResponseWriter, _ *http.Request) {
@@ -120,18 +69,4 @@ func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
-}
-
-func toAPITrip(t *model.Trip) api.Trip {
-	return api.Trip{
-		Id:         t.ID,
-		UserId:     t.UserID,
-		DriverId:   t.DriverID,
-		StartPoint: api.Coordinates{Latitude: t.StartLatitude, Longitude: t.StartLongitude},
-		EndPoint:   api.Coordinates{Latitude: t.EndLatitude, Longitude: t.EndLongitude},
-		Price:      t.Price,
-		Status:     api.TripStatus(t.Status),
-		StartedAt:  t.StartedAt,
-		FinishedAt: t.FinishedAt,
-	}
 }
