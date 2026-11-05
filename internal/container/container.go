@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -126,14 +127,25 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 	}, nil
 }
 
-// Close останавливает сбор телеметрии и закрывает пул базы
+// Close останавливает телеметрию и закрывает пул в пределах срока контекста
 func (c *Container) Close(ctx context.Context) error {
-	err := c.telemetry.Shutdown(ctx)
-	c.pool.Close()
+	var result error
 
-	if err != nil {
-		return fmt.Errorf("shutdown telemetry: %w", err)
+	if err := c.telemetry.Shutdown(ctx); err != nil {
+		result = fmt.Errorf("shutdown telemetry: %w", err)
 	}
 
-	return nil
+	poolClosed := make(chan struct{})
+
+	go func() {
+		c.pool.Close()
+		close(poolClosed)
+	}()
+
+	select {
+	case <-poolClosed:
+		return result
+	case <-ctx.Done():
+		return errors.Join(result, fmt.Errorf("close database pool: %w", ctx.Err()))
+	}
 }
