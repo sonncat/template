@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
@@ -48,7 +49,6 @@ func (r *TripsRepository) Create(ctx context.Context, t *model.Trip) error {
 	if _, err := exec.Exec(ctx, sql, args...); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			// Проверяем, что упало именно ограничение на активные поездки водителя.
 			if pgErr.ConstraintName == "trips_driver_active_uniq" {
 				return domain.ErrDriverBusy
 			}
@@ -106,12 +106,16 @@ func (r *TripsRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Tri
 	return &t, nil
 }
 
-func (r *TripsRepository) Finish(ctx context.Context, id uuid.UUID) (*model.Trip, error) {
+func (r *TripsRepository) Finish(
+	ctx context.Context,
+	id uuid.UUID,
+	finishedAt time.Time,
+) (*model.Trip, error) {
 	exec := txmanager.ExecutorFromContext(ctx, r.pool)
 
 	update := sq.Update("trips").
 		Set("status", "completed").
-		Set("finished_at", sq.Expr("now()")).
+		Set("finished_at", finishedAt).
 		Set("updated_at", sq.Expr("now()")).
 		Where(sq.Eq{"id": id, "status": "active"}).
 		PlaceholderFormat(sq.Dollar)

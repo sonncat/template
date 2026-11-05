@@ -4,6 +4,7 @@ package finish
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -12,7 +13,7 @@ import (
 
 type tripRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Trip, error)
-	Finish(ctx context.Context, id uuid.UUID) (*model.Trip, error)
+	Finish(ctx context.Context, id uuid.UUID, finishedAt time.Time) (*model.Trip, error)
 }
 
 type txManager interface {

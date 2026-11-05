@@ -38,7 +38,7 @@ func (u *UseCase) Execute(ctx context.Context, id uuid.UUID) (*model.Trip, error
 			return fmt.Errorf("check trip status: %w", err)
 		}
 
-		finished, err = u.trips.Finish(txCtx, id)
+		finished, err = u.trips.Finish(txCtx, id, *current.FinishedAt)
 		if err != nil {
 			return fmt.Errorf("save finished trip: %w", err)
 		}

@@ -12,6 +12,7 @@ package finish
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	uuid "github.com/google/uuid"
 	model "github.com/sonncat/template/internal/model"
@@ -43,18 +44,18 @@ func (m *MocktripRepository) EXPECT() *MocktripRepositoryMockRecorder {
 }
 
 // Finish mocks base method.
-func (m *MocktripRepository) Finish(ctx context.Context, id uuid.UUID) (*model.Trip, error) {
+func (m *MocktripRepository) Finish(ctx context.Context, id uuid.UUID, finishedAt time.Time) (*model.Trip, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Finish", ctx, id)
+	ret := m.ctrl.Call(m, "Finish", ctx, id, finishedAt)
 	ret0, _ := ret[0].(*model.Trip)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Finish indicates an expected call of Finish.
-func (mr *MocktripRepositoryMockRecorder) Finish(ctx, id any) *gomock.Call {
+func (mr *MocktripRepositoryMockRecorder) Finish(ctx, id, finishedAt any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Finish", reflect.TypeOf((*MocktripRepository)(nil).Finish), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Finish", reflect.TypeOf((*MocktripRepository)(nil).Finish), ctx, id, finishedAt)
 }
 
 // GetByID mocks base method.

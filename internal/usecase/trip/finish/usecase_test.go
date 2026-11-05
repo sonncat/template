@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/mock/gomock"
@@ -34,8 +35,13 @@ func TestExecute(t *testing.T) {
 			Return(current, nil)
 
 		repo.EXPECT().
-			Finish(gomock.Any(), id).
-			Return(finished, nil)
+			Finish(gomock.Any(), id, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ uuid.UUID, at time.Time) (*model.Trip, error) {
+				if current.FinishedAt == nil || !at.Equal(*current.FinishedAt) {
+					t.Errorf("finished time = %v, want domain model time %v", at, current.FinishedAt)
+				}
+				return finished, nil
+			})
 
 		usecase := New(repo, tx)
 		got, err := usecase.Execute(context.Background(), id)
