@@ -56,7 +56,12 @@ func main() {
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.DB.ConnectTimeout)
-	pool, err := db.NewPool(ctx, cfg.DB, telemetryProviders.Tracer)
+	pool, err := db.NewPool(
+		ctx,
+		cfg.DB,
+		telemetryProviders.Tracer,
+		telemetryProviders.Meter,
+	)
 	cancel()
 	if err != nil {
 		logger.Error("connect to database", "error", err)

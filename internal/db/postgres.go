@@ -6,6 +6,7 @@ import (
 
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/sonncat/template/internal/config"
@@ -15,6 +16,7 @@ func NewPool(
 	ctx context.Context,
 	cfg config.Database,
 	tracerProvider trace.TracerProvider,
+	meterProvider metric.MeterProvider,
 ) (*pgxpool.Pool, error) {
 	poolCfg, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {
@@ -27,6 +29,8 @@ func NewPool(
 	poolCfg.ConnConfig.ConnectTimeout = cfg.ConnectTimeout
 	poolCfg.ConnConfig.Tracer = otelpgx.NewTracer(
 		otelpgx.WithTracerProvider(tracerProvider),
+		otelpgx.WithMeterProvider(meterProvider),
+		otelpgx.WithMetricOperationName(otelpgx.SQLOperationName),
 	)
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
