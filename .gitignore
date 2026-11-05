@@ -6,3 +6,6 @@
 bin/
 
 .DS_Store
+
+# Отчёт покрытия тестов
+coverage.out

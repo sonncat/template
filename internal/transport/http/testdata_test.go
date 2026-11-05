@@ -1,0 +1,9 @@
+package http
+
+const validTripBody = `{
+		"user_id":"5cb72c04-7650-45c9-a79b-bcdba0631e0c",
+		"driver_id":"7aa2363d-b025-4b6d-82af-f1c81c6e6bd0",
+		"start_point":{"latitude":59.9398,"longitude":30.3146},
+		"end_point":{"latitude":59.9290,"longitude":30.3626},
+		"price":1450
+	}`
