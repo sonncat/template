@@ -22,6 +22,7 @@ type Handler struct {
 	pool         *pgxpool.Pool
 	txManager    txmanager.TxManager
 	trips        *repository.TripsRepository
+	createTrip   createTripUseCase
 	getTrip      getTripUseCase
 	queryTimeout time.Duration
 }
@@ -30,6 +31,7 @@ func NewHandler(
 	pool *pgxpool.Pool,
 	txManager txmanager.TxManager,
 	trips *repository.TripsRepository,
+	createTrip createTripUseCase,
 	getTrip getTripUseCase,
 	queryTimeout time.Duration,
 ) *Handler {
@@ -37,6 +39,7 @@ func NewHandler(
 		pool:         pool,
 		txManager:    txManager,
 		trips:        trips,
+		createTrip:   createTrip,
 		getTrip:      getTrip,
 		queryTimeout: queryTimeout,
 	}
@@ -46,7 +49,7 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.
 	var body api.TripData
 
 	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields() // Запрещаем лишние поля в JSON.
+	dec.DisallowUnknownFields()
 
 	if err := dec.Decode(&body); err != nil {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "malformed JSON body or unknown fields")
@@ -73,7 +76,6 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.
 		return
 	}
 
-	// Проверяем диапазоны координат.
 	if body.StartPoint.Latitude < -90 || body.StartPoint.Latitude > 90 ||
 		body.EndPoint.Latitude < -90 || body.EndPoint.Latitude > 90 ||
 		body.StartPoint.Longitude < -180 || body.StartPoint.Longitude > 180 ||
@@ -98,21 +100,13 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.
 	ctx, cancel := context.WithTimeout(r.Context(), h.queryTimeout)
 	defer cancel()
 
-	err := h.txManager.Do(ctx, func(ctx context.Context) error {
-		return h.trips.Create(ctx, trip)
-	})
+	created, err := h.createTrip.Execute(ctx, trip)
 	if err != nil {
 		if errors.Is(err, domain.ErrDriverBusy) {
 			writeProblem(w, r, http.StatusConflict, "driver_busy", "Driver already has an active trip")
 			return
 		}
 
-		writeProblem(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
-		return
-	}
-
-	created, err := h.trips.GetByID(ctx, trip.ID)
-	if err != nil {
 		writeProblem(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
 		return
 	}

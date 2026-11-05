@@ -17,6 +17,7 @@ import (
 	"github.com/sonncat/template/internal/repository"
 	httptransport "github.com/sonncat/template/internal/transport/http"
 	"github.com/sonncat/template/internal/txmanager"
+	createtrip "github.com/sonncat/template/internal/usecase/trip/create"
 	gettrip "github.com/sonncat/template/internal/usecase/trip/get"
 )
 
@@ -36,9 +37,18 @@ func main() {
 
 	txManager := txmanager.NewPgxTxManager(pool)
 	tripsRepo := repository.NewTripsRepository(pool)
+
+	createTrip := createtrip.New(tripsRepo, txManager)
 	getTrip := gettrip.New(tripsRepo)
 
-	h := httptransport.NewHandler(pool, txManager, tripsRepo, getTrip, cfg.DB.QueryTimeout)
+	h := httptransport.NewHandler(
+		pool,
+		txManager,
+		tripsRepo,
+		createTrip,
+		getTrip,
+		cfg.DB.QueryTimeout,
+	)
 
 	r := chi.NewRouter()
 
@@ -63,7 +73,7 @@ func main() {
 	go func() {
 		log.Printf("listening on %s", cfg.HTTPAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("server error: %v", err) // Не Fatalf, чтобы сработали defer.
+			log.Printf("server error: %v", err)
 		}
 	}()
 
