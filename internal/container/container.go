@@ -90,6 +90,9 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 	router.Use(middleware.Logging(logger))
 	router.Use(activeRequests)
 
+	// Внутренний Recover позволяет Logging и Metrics увидеть ответ 500
+	router.Use(middleware.Recover(logger))
+
 	api.HandlerWithOptions(handler, api.ChiServerOptions{
 		BaseRouter: router,
 		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
