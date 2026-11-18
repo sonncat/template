@@ -23,6 +23,7 @@ type txKey struct{}
 func withTx(ctx context.Context, tx pgx.Tx) context.Context {
 	return context.WithValue(ctx, txKey{}, tx)
 }
+
 func ExecutorFromContext(ctx context.Context, pool *pgxpool.Pool) Executor {
 	if tx, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
 		return tx

@@ -21,7 +21,9 @@ func (m *PgxTxManager) Do(ctx context.Context, fn func(ctx context.Context) erro
 		return fn(ctx)
 	}
 
-	tx, err := m.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := m.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel: pgx.ReadCommitted,
+	})
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
@@ -45,5 +47,6 @@ func (m *PgxTxManager) Do(ctx context.Context, fn func(ctx context.Context) erro
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
 	}
+
 	return nil
 }

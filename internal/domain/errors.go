@@ -1,10 +1,16 @@
 package domain
 
-import "errors"
+import (
+	"errors"
 
+	"github.com/sonncat/template/internal/domain/trip"
+)
+
+// Имена сохранены для кода, который ещё использует пакет domain
 var (
-	ErrTripNotFound   = errors.New("trip not found")
-	ErrTripCompleted  = errors.New("trip already completed")
-	ErrDriverBusy     = errors.New("driver already has an active trip")
+	ErrTripNotFound  = trip.ErrTripNotFound
+	ErrTripCompleted = trip.ErrTripCompleted
+	ErrDriverBusy    = trip.ErrDriverBusy
+
 	ErrInvalidRequest = errors.New("invalid request")
 )

@@ -1,0 +1,151 @@
+package container
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/sonncat/template/api"
+	"github.com/sonncat/template/internal/config"
+	"github.com/sonncat/template/internal/http/middleware"
+	"github.com/sonncat/template/internal/infra/postgres"
+	"github.com/sonncat/template/internal/infra/postgres/transaction"
+	"github.com/sonncat/template/internal/infra/telemetry"
+	"github.com/sonncat/template/internal/repository/trip"
+	httptransport "github.com/sonncat/template/internal/transport/http"
+	createtrip "github.com/sonncat/template/internal/usecase/trip/create"
+	finishtrip "github.com/sonncat/template/internal/usecase/trip/finish"
+	gettrip "github.com/sonncat/template/internal/usecase/trip/get"
+)
+
+// Container хранит собранный HTTP-обработчик и ресурсы приложения
+type Container struct {
+	Handler   http.Handler
+	pool      *pgxpool.Pool
+	telemetry *telemetry.Providers
+}
+
+// New создаёт зависимости приложения и связывает их между собой
+func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Container, error) {
+	telemetryProviders, err := telemetry.New(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("initialize telemetry: %w", err)
+	}
+
+	connectCtx, cancel := context.WithTimeout(ctx, cfg.DB.ConnectTimeout)
+	pool, err := db.NewPool(
+		connectCtx,
+		cfg.DB,
+		telemetryProviders.Tracer,
+		telemetryProviders.Meter,
+	)
+	cancel()
+	if err != nil {
+		_ = telemetryProviders.Shutdown(ctx)
+		return nil, fmt.Errorf("connect to database: %w", err)
+	}
+
+	txManager := txmanager.NewPgxTxManager(pool)
+	tripsRepo := repository.NewTripsRepository(pool)
+
+	err = telemetry.RegisterActiveTrips(
+		telemetryProviders.Meter.Meter("trip-service/trips"),
+		tripsRepo,
+		cfg.DB.QueryTimeout,
+		logger,
+	)
+	if err != nil {
+		_ = telemetryProviders.Shutdown(ctx)
+		pool.Close()
+		return nil, fmt.Errorf("initialize active trips metric: %w", err)
+	}
+
+	tripEvents, err := telemetry.NewTripEvents(
+		telemetryProviders.Meter.Meter("trip-service/trips"),
+		logger,
+	)
+	if err != nil {
+		_ = telemetryProviders.Shutdown(ctx)
+		pool.Close()
+		return nil, fmt.Errorf("initialize trip metrics: %w", err)
+	}
+
+	createTrip := tripEvents.ObserveCreate(createtrip.New(tripsRepo, txManager))
+	getTrip := gettrip.New(tripsRepo)
+	finishTrip := tripEvents.ObserveFinish(finishtrip.New(tripsRepo, txManager))
+
+	handler := httptransport.NewHandler(
+		pool,
+		createTrip,
+		getTrip,
+		finishTrip,
+		cfg.DB.QueryTimeout,
+	)
+
+	router := chi.NewRouter()
+
+	activeRequests, err := middleware.ActiveRequests(
+		telemetryProviders.Meter.Meter("trip-service/http"),
+		router,
+	)
+	if err != nil {
+		_ = telemetryProviders.Shutdown(ctx)
+		pool.Close()
+		return nil, fmt.Errorf("initialize HTTP metrics: %w", err)
+	}
+
+	router.Use(middleware.Logging(logger))
+	router.Use(activeRequests)
+	router.Use(middleware.Recover(logger))
+
+	api.HandlerWithOptions(handler, api.ChiServerOptions{
+		BaseRouter: router,
+		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Bad Request","status":400,"detail":"invalid path parameters","code":"invalid_request"}`))
+		},
+	})
+
+	tracedHandler := otelhttp.NewHandler(
+		router,
+		"HTTP request",
+		otelhttp.WithTracerProvider(telemetryProviders.Tracer),
+		otelhttp.WithMeterProvider(telemetryProviders.Meter),
+	)
+
+	return &Container{
+		Handler:   middleware.Recover(logger)(tracedHandler),
+		pool:      pool,
+		telemetry: telemetryProviders,
+	}, nil
+}
+
+// Close останавливает телеметрию и закрывает пул в пределах срока контекста
+func (c *Container) Close(ctx context.Context) error {
+	var result error
+
+	if err := c.telemetry.Shutdown(ctx); err != nil {
+		result = fmt.Errorf("shutdown telemetry: %w", err)
+	}
+
+	poolClosed := make(chan struct{})
+
+	go func() {
+		c.pool.Close()
+		close(poolClosed)
+	}()
+
+	select {
+	case <-poolClosed:
+		return result
+	case <-ctx.Done():
+		return errors.Join(result, fmt.Errorf("close database pool: %w", ctx.Err()))
+	}
+}
