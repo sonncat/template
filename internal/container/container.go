@@ -14,11 +14,14 @@ import (
 	"github.com/sonncat/template/api"
 	"github.com/sonncat/template/internal/config"
 	"github.com/sonncat/template/internal/http/middleware"
+	positiontransport "github.com/sonncat/template/internal/http/position"
 	"github.com/sonncat/template/internal/infra/postgres"
 	"github.com/sonncat/template/internal/infra/postgres/transaction"
 	"github.com/sonncat/template/internal/infra/telemetry"
 	"github.com/sonncat/template/internal/repository/trip"
 	httptransport "github.com/sonncat/template/internal/transport/http"
+	listpositions "github.com/sonncat/template/internal/usecase/position/list"
+	saveposition "github.com/sonncat/template/internal/usecase/position/save"
 	createtrip "github.com/sonncat/template/internal/usecase/trip/create"
 	finishtrip "github.com/sonncat/template/internal/usecase/trip/finish"
 	gettrip "github.com/sonncat/template/internal/usecase/trip/get"
@@ -87,6 +90,12 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 		finishTrip,
 		cfg.DB.QueryTimeout,
 	)
+
+	handler.SetPositionHandler(positiontransport.New(
+		saveposition.New(tripsRepo, txManager),
+		listpositions.New(tripsRepo),
+		cfg.DB.QueryTimeout,
+	))
 
 	router := chi.NewRouter()
 

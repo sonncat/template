@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sonncat/template/api"
+	positiontransport "github.com/sonncat/template/internal/http/position"
 	createtransport "github.com/sonncat/template/internal/http/trip/create"
 	finishtransport "github.com/sonncat/template/internal/http/trip/finish"
 	gettransport "github.com/sonncat/template/internal/http/trip/get"
@@ -17,7 +18,29 @@ type Handler struct {
 	createTrip   *createtransport.Handler
 	getTrip      *gettransport.Handler
 	finishTrip   *finishtransport.Handler
+	position     *positiontransport.Handler
 	queryTimeout time.Duration
+}
+
+// SetPositionHandler подключает обработчики координат
+func (h *Handler) SetPositionHandler(handler *positiontransport.Handler) {
+	h.position = handler
+}
+
+func (h *Handler) CreateTripPosition(
+	w http.ResponseWriter,
+	r *http.Request,
+	tripID api.TripId,
+) {
+	h.position.Create(w, r, tripID)
+}
+
+func (h *Handler) ListTripPositions(
+	w http.ResponseWriter,
+	r *http.Request,
+	tripID api.TripId,
+) {
+	h.position.List(w, r, tripID)
 }
 
 // NewHandler создаёт OpenAPI-адаптер и обработчики действий
