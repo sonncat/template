@@ -369,3 +369,39 @@ func TestScannerSetsQueryDeadline(t *testing.T) {
 		t.Fatal("scanner query has no deadline")
 	}
 }
+
+func TestScannerSkipsTripUpdatedDuringScan(t *testing.T) {
+	trip := model.StaleTrip{
+		TripID:   uuid.New(),
+		DriverID: uuid.New(),
+	}
+
+	ctrl := gomock.NewController(t)
+	reader := NewMockstaleTripsReader(ctrl)
+
+	scanner := NewScanner(reader, time.Minute, 1, testLogger())
+
+	gomock.InOrder(
+		reader.EXPECT().
+			ListStaleTrips(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ time.Duration) ([]model.StaleTrip, error) {
+				scanner.Cancel(trip.TripID)
+				return []model.StaleTrip{trip}, nil
+			}),
+		reader.EXPECT().
+			ListStaleTrips(gomock.Any(), gomock.Any()).
+			Return([]model.StaleTrip{trip}, nil),
+	)
+
+	scanner.Scan(context.Background())
+
+	if got := len(scanner.queue.channel); got != 0 {
+		t.Fatalf("queue length after coordinate = %d, want 0", got)
+	}
+
+	scanner.Scan(context.Background())
+
+	if got := len(scanner.queue.channel); got != 1 {
+		t.Fatalf("queue length on next scan = %d, want 1", got)
+	}
+}

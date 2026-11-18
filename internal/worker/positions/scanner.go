@@ -3,6 +3,7 @@ package positions
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,13 +29,15 @@ type positionMetrics interface {
 }
 
 type Scanner struct {
-	metrics      positionMetrics
-	tracer       trace.Tracer
-	reader       staleTripsReader
-	queue        *queue
-	staleAfter   time.Duration
-	queryTimeout time.Duration
-	logger       *slog.Logger
+	scanMu              sync.Mutex
+	cancelledDuringScan map[uuid.UUID]struct{}
+	metrics             positionMetrics
+	tracer              trace.Tracer
+	reader              staleTripsReader
+	queue               *queue
+	staleAfter          time.Duration
+	queryTimeout        time.Duration
+	logger              *slog.Logger
 }
 
 // NewScanner создаёт сканер и его ограниченную очередь
@@ -72,6 +75,16 @@ func (s *Scanner) QueueSize() int64 {
 // Scan выполняет одну проверку. Следующую проверку вызывающий код
 // начинает только после завершения предыдущей
 func (s *Scanner) Scan(ctx context.Context) {
+	s.scanMu.Lock()
+	s.cancelledDuringScan = make(map[uuid.UUID]struct{})
+	s.scanMu.Unlock()
+
+	defer func() {
+		s.scanMu.Lock()
+		s.cancelledDuringScan = nil
+		s.scanMu.Unlock()
+	}()
+
 	ctx, span := s.tracer.Start(ctx, "positions.scan")
 	defer span.End()
 
@@ -98,7 +111,15 @@ func (s *Scanner) Scan(ctx context.Context) {
 			return
 		}
 
+		s.scanMu.Lock()
+
+		if _, cancelled := s.cancelledDuringScan[trip.TripID]; cancelled {
+			s.scanMu.Unlock()
+			continue
+		}
+
 		result := s.queue.enqueueWithSpan(trip, span.SpanContext())
+		s.scanMu.Unlock()
 
 		switch result {
 		case queued:
@@ -139,5 +160,12 @@ func (s *Scanner) Run(ctx context.Context, ticks <-chan time.Time) {
 
 // Cancel помечает ожидающую задачу поездки отменённой
 func (s *Scanner) Cancel(tripID uuid.UUID) {
+	s.scanMu.Lock()
+	defer s.scanMu.Unlock()
+
+	if s.cancelledDuringScan != nil {
+		s.cancelledDuringScan[tripID] = struct{}{}
+	}
+
 	s.queue.cancel(tripID)
 }
