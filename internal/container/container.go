@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/sonncat/template/api"
@@ -30,16 +29,35 @@ import (
 	"github.com/sonncat/template/internal/worker/positions"
 )
 
+//go:generate go tool mockgen -source=container.go -destination=container_mocks_test.go -package=container
+
+type databasePool interface {
+	Close()
+}
+
+type telemetryProviders interface {
+	Shutdown(ctx context.Context) error
+}
+
+type positionWorkers interface {
+	Stop(ctx context.Context) error
+	Cancel()
+}
+
+type pushCloser interface {
+	Close()
+}
+
 // Container хранит собранный HTTP-обработчик и ресурсы приложения
 type Container struct {
 	Handler   http.Handler
-	pool      *pgxpool.Pool
-	telemetry *telemetry.Providers
+	pool      databasePool
+	telemetry telemetryProviders
 
 	scannerCancel context.CancelFunc
 	scannerDone   chan struct{}
-	workers       *positions.WorkerPool
-	pushClient    *push.Client
+	workers       positionWorkers
+	pushClient    pushCloser
 }
 
 // New создаёт зависимости приложения и связывает их между собой
