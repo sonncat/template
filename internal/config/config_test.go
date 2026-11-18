@@ -23,6 +23,12 @@ func setValidEnvironment(t *testing.T) {
 		"DATABASE_MAX_CONN_LIFETIME": "30m",
 		"DATABASE_CONNECT_TIMEOUT":   "5s",
 		"DATABASE_QUERY_TIMEOUT":     "3s",
+		"POSITION_CHECK_INTERVAL":    "30s",
+		"POSITION_STALE_AFTER":       "60s",
+		"POSITION_WORKERS":           "4",
+		"POSITION_QUEUE_SIZE":        "100",
+		"PUSH_HTTP_URL":              "http://localhost:23809",
+		"PUSH_REQUEST_TIMEOUT":       "1s",
 	}
 
 	for key, value := range values {

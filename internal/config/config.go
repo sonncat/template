@@ -16,6 +16,13 @@ type Config struct {
 	LogLevel          string
 	ShutdownTimeout   time.Duration
 
+	PositionCheckInterval time.Duration
+	PositionStaleAfter    time.Duration
+	PositionWorkers       int32
+	PositionQueueSize     int32
+	PushHTTPURL           string
+	PushRequestTimeout    time.Duration
+
 	DB Database
 }
 
@@ -101,6 +108,42 @@ func Load() (*Config, error) {
 	}
 
 	cfg.DB.QueryTimeout, err = requiredDuration("DATABASE_QUERY_TIMEOUT")
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.PositionCheckInterval, err = requiredDuration("POSITION_CHECK_INTERVAL")
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.PositionStaleAfter, err = requiredDuration("POSITION_STALE_AFTER")
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.PositionWorkers, err = requiredInt32("POSITION_WORKERS")
+	if err != nil {
+		return nil, err
+	}
+	if cfg.PositionWorkers < 1 {
+		return nil, fmt.Errorf("POSITION_WORKERS must be at least 1")
+	}
+
+	cfg.PositionQueueSize, err = requiredInt32("POSITION_QUEUE_SIZE")
+	if err != nil {
+		return nil, err
+	}
+	if cfg.PositionQueueSize < 1 {
+		return nil, fmt.Errorf("POSITION_QUEUE_SIZE must be at least 1")
+	}
+
+	cfg.PushHTTPURL, err = requiredString("PUSH_HTTP_URL")
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.PushRequestTimeout, err = requiredDuration("PUSH_REQUEST_TIMEOUT")
 	if err != nil {
 		return nil, err
 	}
