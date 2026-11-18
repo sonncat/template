@@ -72,3 +72,30 @@ func TestQueueCancelDoesNotRemoveNewTask(t *testing.T) {
 		t.Fatal("finished task is still pending")
 	}
 }
+
+func TestQueueKeepsStartedTaskPendingAfterCancel(t *testing.T) {
+	q := newQueue(1)
+	trip := model.StaleTrip{TripID: uuid.New()}
+
+	if got := q.enqueue(trip); got != queued {
+		t.Fatalf("enqueue = %v, want queued", got)
+	}
+
+	item := <-q.channel
+
+	if !q.claim(item) {
+		t.Fatal("could not start queued task")
+	}
+
+	q.cancel(trip.TripID)
+
+	if got := q.enqueue(trip); got != duplicate {
+		t.Errorf("enqueue while task is running = %v, want duplicate", got)
+	}
+
+	q.finish(item)
+
+	if got := q.enqueue(trip); got != queued {
+		t.Errorf("enqueue after task finished = %v, want queued", got)
+	}
+}

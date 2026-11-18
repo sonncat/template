@@ -18,8 +18,9 @@ const (
 )
 
 type task struct {
-	trip model.StaleTrip
-	span trace.SpanContext
+	trip    model.StaleTrip
+	span    trace.SpanContext
+	started bool
 }
 
 type queue struct {
@@ -68,7 +69,10 @@ func (q *queue) cancel(tripID uuid.UUID) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	delete(q.pending, tripID)
+	item, exists := q.pending[tripID]
+	if exists && !item.started {
+		delete(q.pending, tripID)
+	}
 }
 
 // isPending проверяет именно эту задачу, а не только ID поездки
@@ -78,6 +82,20 @@ func (q *queue) isPending(item *task) bool {
 	defer q.mu.Unlock()
 
 	return q.pending[item.trip.TripID] == item
+}
+
+// claim отмечает задачу начатой, если она ещё не была отменена
+func (q *queue) claim(item *task) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.pending[item.trip.TripID] != item {
+		return false
+	}
+
+	item.started = true
+
+	return true
 }
 
 // finish удаляет задачу после обработки, не затрагивая более новую

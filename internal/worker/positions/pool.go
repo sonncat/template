@@ -84,7 +84,7 @@ func (p *WorkerPool) runWorker() {
 				return
 			}
 
-			if !p.scanner.queue.isPending(item) {
+			if !p.scanner.queue.claim(item) {
 				continue
 			}
 
