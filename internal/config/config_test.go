@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -75,5 +76,44 @@ func TestLoadRejectsInvalidHTTPTimeout(t *testing.T) {
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "HTTP_READ_TIMEOUT") {
 		t.Fatalf("Load() error = %v, want invalid HTTP_READ_TIMEOUT", err)
+	}
+}
+
+func TestLoadPositionDefaults(t *testing.T) {
+	setValidEnvironment(t)
+
+	keys := []string{
+		"POSITION_CHECK_INTERVAL",
+		"POSITION_STALE_AFTER",
+		"POSITION_WORKERS",
+		"POSITION_QUEUE_SIZE",
+		"PUSH_REQUEST_TIMEOUT",
+	}
+
+	for _, key := range keys {
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatalf("unset %s: %v", key, err)
+		}
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.PositionCheckInterval != 30*time.Second {
+		t.Errorf("check interval = %v, want 30s", cfg.PositionCheckInterval)
+	}
+	if cfg.PositionStaleAfter != 60*time.Second {
+		t.Errorf("stale after = %v, want 60s", cfg.PositionStaleAfter)
+	}
+	if cfg.PositionWorkers != 4 {
+		t.Errorf("workers = %d, want 4", cfg.PositionWorkers)
+	}
+	if cfg.PositionQueueSize != 100 {
+		t.Errorf("queue size = %d, want 100", cfg.PositionQueueSize)
+	}
+	if cfg.PushRequestTimeout != time.Second {
+		t.Errorf("push timeout = %v, want 1s", cfg.PushRequestTimeout)
 	}
 }
