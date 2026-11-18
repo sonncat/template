@@ -199,27 +199,26 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 
 // Close останавливает телеметрию и закрывает пул в пределах срока контекста
 func (c *Container) Close(ctx context.Context) error {
+	var result error
+
 	c.scannerCancel()
 
 	select {
 	case <-c.scannerDone:
-	case <-ctx.Done():
-		c.workers.Cancel()
-		c.pushClient.Close()
-		return fmt.Errorf("stop position scanner: %w", ctx.Err())
-	}
+		if err := c.workers.Stop(ctx); err != nil {
+			result = errors.Join(result, fmt.Errorf("stop position workers: %w", err))
+		}
 
-	if err := c.workers.Stop(ctx); err != nil {
-		c.pushClient.Close()
-		return fmt.Errorf("stop position workers: %w", err)
+	case <-ctx.Done():
+		// Очередь не закрываем, пока сканер ещё может в неё записывать
+		c.workers.Cancel()
+		result = errors.Join(result, fmt.Errorf("stop position scanner: %w", ctx.Err()))
 	}
 
 	c.pushClient.Close()
 
-	var result error
-
 	if err := c.telemetry.Shutdown(ctx); err != nil {
-		result = fmt.Errorf("shutdown telemetry: %w", err)
+		result = errors.Join(result, fmt.Errorf("shutdown telemetry: %w", err))
 	}
 
 	poolClosed := make(chan struct{})
