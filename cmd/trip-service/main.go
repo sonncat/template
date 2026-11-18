@@ -30,9 +30,12 @@ func main() {
 		Level: logLevel,
 	})).With("service", "trip-service")
 
-	app, err := container.New(context.Background(), cfg, logger)
+	appCtx, appCancel := context.WithCancel(context.Background())
+
+	app, err := container.New(appCtx, cfg, logger)
 	if err != nil {
 		logger.Error("initialize application", "error", err)
+		appCancel()
 		os.Exit(1)
 	}
 
@@ -81,6 +84,7 @@ func main() {
 	}
 
 	shutdownCancel()
+	appCancel()
 	logger.Info("server stopped")
 
 	if exitCode != 0 {

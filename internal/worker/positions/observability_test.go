@@ -88,7 +88,7 @@ func TestScannerAndWorkerObservability(t *testing.T) {
 	scanner.Scan(context.Background())
 
 	push := &fakePush{}
-	pool := NewWorkerPool(scanner, push, time.Second, testLogger())
+	pool := NewWorkerPool(context.Background(), scanner, push, time.Second, testLogger())
 	pool.Start(1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

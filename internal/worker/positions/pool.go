@@ -30,12 +30,13 @@ type WorkerPool struct {
 
 // NewWorkerPool создаёт пул. Воркеры запускаются отдельно вызовом Start
 func NewWorkerPool(
+	parentCtx context.Context,
 	scanner *Scanner,
 	push positionRequester,
 	timeout time.Duration,
 	logger *slog.Logger,
 ) *WorkerPool {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(parentCtx)
 
 	return &WorkerPool{
 		scanner: scanner,

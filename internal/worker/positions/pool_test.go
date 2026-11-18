@@ -99,7 +99,7 @@ func TestPoolSkipsCancelledTaskAndContinuesAfterPushError(t *testing.T) {
 	scanner.Cancel(cancelled.TripID)
 
 	push := &fakePush{failOnce: true}
-	pool := NewWorkerPool(scanner, push, time.Second, testLogger())
+	pool := NewWorkerPool(context.Background(), scanner, push, time.Second, testLogger())
 
 	// Один воркер позволяет проверить порядок обработки и то, что после ошибки он берёт следующую задачу
 	pool.Start(1)

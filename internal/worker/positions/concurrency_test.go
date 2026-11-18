@@ -104,7 +104,7 @@ func TestPoolRunsConfiguredNumberOfWorkers(t *testing.T) {
 	}
 	defer close(push.release)
 
-	pool := NewWorkerPool(scanner, push, 10*time.Second, testLogger())
+	pool := NewWorkerPool(context.Background(), scanner, push, 10*time.Second, testLogger())
 	pool.Start(2)
 
 	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -160,7 +160,7 @@ func TestPoolCancelsPushWhenShutdownDeadlinePassed(t *testing.T) {
 	}
 	defer close(push.release)
 
-	pool := NewWorkerPool(scanner, push, time.Minute, testLogger())
+	pool := NewWorkerPool(context.Background(), scanner, push, time.Minute, testLogger())
 	pool.Start(1)
 
 	select {
@@ -206,7 +206,7 @@ func TestPoolCancelStopsWorkers(t *testing.T) {
 	}
 	defer close(push.release)
 
-	pool := NewWorkerPool(scanner, push, time.Minute, testLogger())
+	pool := NewWorkerPool(context.Background(), scanner, push, time.Minute, testLogger())
 	pool.Start(1)
 
 	select {
@@ -297,7 +297,7 @@ func TestPoolStopDrainsQueuedTasks(t *testing.T) {
 	}
 	defer close(push.release)
 
-	pool := NewWorkerPool(scanner, push, time.Minute, testLogger())
+	pool := NewWorkerPool(context.Background(), scanner, push, time.Minute, testLogger())
 	pool.Start(1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -352,5 +352,30 @@ func TestPoolStopDrainsQueuedTasks(t *testing.T) {
 	case <-ctx.Done():
 		pool.Cancel()
 		t.Fatal("pool did not stop after draining tasks")
+	}
+}
+
+type deadlineReader struct {
+	deadlineSet bool
+}
+
+func (r *deadlineReader) ListStaleTrips(
+	ctx context.Context,
+	_ time.Duration,
+) ([]model.StaleTrip, error) {
+	_, r.deadlineSet = ctx.Deadline()
+
+	return nil, nil
+}
+
+func TestScannerSetsQueryDeadline(t *testing.T) {
+	reader := &deadlineReader{}
+	scanner := NewScanner(reader, time.Minute, 1, testLogger())
+	scanner.SetQueryTimeout(3 * time.Second)
+
+	scanner.Scan(context.Background())
+
+	if !reader.deadlineSet {
+		t.Fatal("scanner query has no deadline")
 	}
 }

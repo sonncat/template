@@ -108,6 +108,7 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 
 	pushClient := push.New(cfg.PushHTTPURL, cfg.PushRequestTimeout)
 	workers := positions.NewWorkerPool(
+		ctx,
 		scanner,
 		pushClient,
 		cfg.PushRequestTimeout,
@@ -131,6 +132,7 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 		return nil, fmt.Errorf("initialize position metrics: %w", err)
 	}
 
+	scanner.SetQueryTimeout(cfg.DB.QueryTimeout)
 	scanner.SetObservability(
 		positionMetrics,
 		telemetryProviders.Tracer.Tracer("trip-service/positions"),
@@ -172,7 +174,7 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 		otelhttp.WithMeterProvider(telemetryProviders.Meter),
 	)
 
-	scannerCtx, scannerCancel := context.WithCancel(context.Background())
+	scannerCtx, scannerCancel := context.WithCancel(ctx)
 	scannerDone := make(chan struct{})
 
 	workers.Start(int(cfg.PositionWorkers))

@@ -26,12 +26,13 @@ type positionMetrics interface {
 }
 
 type Scanner struct {
-	metrics    positionMetrics
-	tracer     trace.Tracer
-	reader     staleTripsReader
-	queue      *queue
-	staleAfter time.Duration
-	logger     *slog.Logger
+	metrics      positionMetrics
+	tracer       trace.Tracer
+	reader       staleTripsReader
+	queue        *queue
+	staleAfter   time.Duration
+	queryTimeout time.Duration
+	logger       *slog.Logger
 }
 
 // NewScanner создаёт сканер и его ограниченную очередь
@@ -56,6 +57,11 @@ func (s *Scanner) SetObservability(metrics positionMetrics, tracer trace.Tracer)
 	s.tracer = tracer
 }
 
+// SetQueryTimeout задаёт таймаут запроса устаревших поездок
+func (s *Scanner) SetQueryTimeout(timeout time.Duration) {
+	s.queryTimeout = timeout
+}
+
 // QueueSize возвращает количество задач в канале
 func (s *Scanner) QueueSize() int64 {
 	return int64(len(s.queue.channel))
@@ -67,7 +73,16 @@ func (s *Scanner) Scan(ctx context.Context) {
 	ctx, span := s.tracer.Start(ctx, "positions.scan")
 	defer span.End()
 
-	trips, err := s.reader.ListStaleTrips(ctx, s.staleAfter)
+	queryCtx := ctx
+	cancel := func() {}
+
+	if s.queryTimeout > 0 {
+		queryCtx, cancel = context.WithTimeout(ctx, s.queryTimeout)
+	}
+
+	trips, err := s.reader.ListStaleTrips(queryCtx, s.staleAfter)
+	cancel()
+
 	if err != nil {
 		if ctx.Err() == nil {
 			s.logger.Error("select stale trips", "error", err)
