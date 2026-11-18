@@ -272,3 +272,85 @@ func TestScannerCancelsRunningQuery(t *testing.T) {
 		t.Fatal("scanner did not stop after query cancellation")
 	}
 }
+
+func TestPoolStopDrainsQueuedTasks(t *testing.T) {
+	first := model.StaleTrip{
+		TripID:   uuid.New(),
+		DriverID: uuid.New(),
+	}
+	second := model.StaleTrip{
+		TripID:   uuid.New(),
+		DriverID: uuid.New(),
+	}
+
+	scanner := NewScanner(
+		&fakeStaleReader{trips: []model.StaleTrip{first, second}},
+		time.Minute,
+		2,
+		testLogger(),
+	)
+	scanner.Scan(context.Background())
+
+	push := &blockingPush{
+		started: make(chan uuid.UUID, 2),
+		release: make(chan struct{}),
+	}
+	defer close(push.release)
+
+	pool := NewWorkerPool(scanner, push, time.Minute, testLogger())
+	pool.Start(1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	select {
+	case got := <-push.started:
+		if got != first.TripID {
+			pool.Cancel()
+			t.Fatalf("first task = %s, want %s", got, first.TripID)
+		}
+	case <-ctx.Done():
+		pool.Cancel()
+		t.Fatal("first task did not start")
+	}
+
+	stopped := make(chan error, 1)
+	go func() {
+		stopped <- pool.Stop(ctx)
+	}()
+
+	select {
+	case push.release <- struct{}{}:
+	case <-ctx.Done():
+		pool.Cancel()
+		t.Fatal("first task did not finish")
+	}
+
+	select {
+	case got := <-push.started:
+		if got != second.TripID {
+			pool.Cancel()
+			t.Fatalf("second task = %s, want %s", got, second.TripID)
+		}
+	case <-ctx.Done():
+		pool.Cancel()
+		t.Fatal("queued task did not start during shutdown")
+	}
+
+	select {
+	case push.release <- struct{}{}:
+	case <-ctx.Done():
+		pool.Cancel()
+		t.Fatal("second task did not finish")
+	}
+
+	select {
+	case err := <-stopped:
+		if err != nil {
+			t.Fatalf("stop pool: %v", err)
+		}
+	case <-ctx.Done():
+		pool.Cancel()
+		t.Fatal("pool did not stop after draining tasks")
+	}
+}
