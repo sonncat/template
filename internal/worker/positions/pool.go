@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+//go:generate go tool mockgen -source=pool.go -destination=pool_mocks_test.go -package=positions
 type positionRequester interface {
 	RequestPosition(ctx context.Context, tripID, driverID uuid.UUID) error
 }

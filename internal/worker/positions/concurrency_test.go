@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 
 	"github.com/sonncat/template/internal/model"
 )
@@ -15,43 +16,51 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
 
-type notifyingReader struct {
-	called chan struct{}
-}
-
-func (r *notifyingReader) ListStaleTrips(
-	_ context.Context,
-	_ time.Duration,
-) ([]model.StaleTrip, error) {
-	r.called <- struct{}{}
-
-	return nil, nil
-}
-
 type blockingPush struct {
+	mock    *MockpositionRequester
 	started chan uuid.UUID
 	release chan struct{}
 }
 
-func (p *blockingPush) RequestPosition(
-	ctx context.Context,
-	tripID uuid.UUID,
-	_ uuid.UUID,
-) error {
-	p.started <- tripID
+func newBlockingPush(t *testing.T, capacity int) *blockingPush {
+	t.Helper()
 
-	select {
-	case <-p.release:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+	ctrl := gomock.NewController(t)
+	push := &blockingPush{
+		mock:    NewMockpositionRequester(ctrl),
+		started: make(chan uuid.UUID, capacity),
+		release: make(chan struct{}),
 	}
+
+	push.mock.EXPECT().
+		RequestPosition(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, tripID, _ uuid.UUID) error {
+			push.started <- tripID
+
+			select {
+			case <-push.release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}).
+		AnyTimes()
+
+	return push
 }
 
 func TestScannerRunsOnTickAndStopsOnCancellation(t *testing.T) {
-	reader := &notifyingReader{
-		called: make(chan struct{}, 1),
-	}
+	called := make(chan struct{}, 1)
+	ctrl := gomock.NewController(t)
+	reader := NewMockstaleTripsReader(ctrl)
+
+	reader.EXPECT().
+		ListStaleTrips(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ time.Duration) ([]model.StaleTrip, error) {
+			called <- struct{}{}
+			return nil, nil
+		}).
+		AnyTimes()
 
 	scanner := NewScanner(reader, time.Minute, 2, testLogger())
 	ticks := make(chan time.Time)
@@ -67,7 +76,7 @@ func TestScannerRunsOnTickAndStopsOnCancellation(t *testing.T) {
 	ticks <- time.Now()
 
 	select {
-	case <-reader.called:
+	case <-called:
 	case <-time.After(5 * time.Second):
 		cancel()
 		t.Fatal("scanner did not process tick")
@@ -90,7 +99,7 @@ func TestPoolRunsConfiguredNumberOfWorkers(t *testing.T) {
 	}
 
 	scanner := NewScanner(
-		&fakeStaleReader{trips: trips},
+		newMockStaleReader(t, trips),
 		time.Minute,
 		len(trips),
 		testLogger(),
@@ -98,13 +107,10 @@ func TestPoolRunsConfiguredNumberOfWorkers(t *testing.T) {
 
 	scanner.Scan(context.Background())
 
-	push := &blockingPush{
-		started: make(chan uuid.UUID, len(trips)),
-		release: make(chan struct{}),
-	}
+	push := newBlockingPush(t, len(trips))
 	defer close(push.release)
 
-	pool := NewWorkerPool(context.Background(), scanner, push, 10*time.Second, testLogger())
+	pool := NewWorkerPool(context.Background(), scanner, push.mock, 10*time.Second, testLogger())
 	pool.Start(2)
 
 	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -147,20 +153,17 @@ func TestPoolCancelsPushWhenShutdownDeadlinePassed(t *testing.T) {
 	}
 
 	scanner := NewScanner(
-		&fakeStaleReader{trips: []model.StaleTrip{trip}},
+		newMockStaleReader(t, []model.StaleTrip{trip}),
 		time.Minute,
 		1,
 		testLogger(),
 	)
 	scanner.Scan(context.Background())
 
-	push := &blockingPush{
-		started: make(chan uuid.UUID, 1),
-		release: make(chan struct{}),
-	}
+	push := newBlockingPush(t, 1)
 	defer close(push.release)
 
-	pool := NewWorkerPool(context.Background(), scanner, push, time.Minute, testLogger())
+	pool := NewWorkerPool(context.Background(), scanner, push.mock, time.Minute, testLogger())
 	pool.Start(1)
 
 	select {
@@ -193,20 +196,17 @@ func TestPoolCancelStopsWorkers(t *testing.T) {
 	}
 
 	scanner := NewScanner(
-		&fakeStaleReader{trips: []model.StaleTrip{trip}},
+		newMockStaleReader(t, []model.StaleTrip{trip}),
 		time.Minute,
 		1,
 		testLogger(),
 	)
 	scanner.Scan(context.Background())
 
-	push := &blockingPush{
-		started: make(chan uuid.UUID, 1),
-		release: make(chan struct{}),
-	}
+	push := newBlockingPush(t, 1)
 	defer close(push.release)
 
-	pool := NewWorkerPool(context.Background(), scanner, push, time.Minute, testLogger())
+	pool := NewWorkerPool(context.Background(), scanner, push.mock, time.Minute, testLogger())
 	pool.Start(1)
 
 	select {
@@ -225,24 +225,19 @@ func TestPoolCancelStopsWorkers(t *testing.T) {
 	}
 }
 
-type cancellationReader struct {
-	started chan struct{}
-}
-
-func (r *cancellationReader) ListStaleTrips(
-	ctx context.Context,
-	_ time.Duration,
-) ([]model.StaleTrip, error) {
-	close(r.started)
-	<-ctx.Done()
-
-	return nil, ctx.Err()
-}
-
 func TestScannerCancelsRunningQuery(t *testing.T) {
-	reader := &cancellationReader{
-		started: make(chan struct{}),
-	}
+	started := make(chan struct{})
+	ctrl := gomock.NewController(t)
+	reader := NewMockstaleTripsReader(ctrl)
+
+	reader.EXPECT().
+		ListStaleTrips(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ time.Duration) ([]model.StaleTrip, error) {
+			close(started)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}).
+		Times(1)
 
 	scanner := NewScanner(reader, time.Minute, 1, testLogger())
 	ticks := make(chan time.Time, 1)
@@ -259,7 +254,7 @@ func TestScannerCancelsRunningQuery(t *testing.T) {
 	}()
 
 	select {
-	case <-reader.started:
+	case <-started:
 	case <-time.After(5 * time.Second):
 		t.Fatal("scanner query did not start")
 	}
@@ -284,20 +279,17 @@ func TestPoolStopDrainsQueuedTasks(t *testing.T) {
 	}
 
 	scanner := NewScanner(
-		&fakeStaleReader{trips: []model.StaleTrip{first, second}},
+		newMockStaleReader(t, []model.StaleTrip{first, second}),
 		time.Minute,
 		2,
 		testLogger(),
 	)
 	scanner.Scan(context.Background())
 
-	push := &blockingPush{
-		started: make(chan uuid.UUID, 2),
-		release: make(chan struct{}),
-	}
+	push := newBlockingPush(t, 2)
 	defer close(push.release)
 
-	pool := NewWorkerPool(context.Background(), scanner, push, time.Minute, testLogger())
+	pool := NewWorkerPool(context.Background(), scanner, push.mock, time.Minute, testLogger())
 	pool.Start(1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -355,27 +347,25 @@ func TestPoolStopDrainsQueuedTasks(t *testing.T) {
 	}
 }
 
-type deadlineReader struct {
-	deadlineSet bool
-}
-
-func (r *deadlineReader) ListStaleTrips(
-	ctx context.Context,
-	_ time.Duration,
-) ([]model.StaleTrip, error) {
-	_, r.deadlineSet = ctx.Deadline()
-
-	return nil, nil
-}
-
 func TestScannerSetsQueryDeadline(t *testing.T) {
-	reader := &deadlineReader{}
+	deadlineSet := false
+	ctrl := gomock.NewController(t)
+	reader := NewMockstaleTripsReader(ctrl)
+
+	reader.EXPECT().
+		ListStaleTrips(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ time.Duration) ([]model.StaleTrip, error) {
+			_, deadlineSet = ctx.Deadline()
+			return nil, nil
+		}).
+		Times(1)
+
 	scanner := NewScanner(reader, time.Minute, 1, testLogger())
 	scanner.SetQueryTimeout(3 * time.Second)
 
 	scanner.Scan(context.Background())
 
-	if !reader.deadlineSet {
+	if !deadlineSet {
 		t.Fatal("scanner query has no deadline")
 	}
 }

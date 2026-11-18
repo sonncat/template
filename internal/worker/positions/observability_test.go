@@ -68,7 +68,7 @@ func TestScannerAndWorkerObservability(t *testing.T) {
 	}
 
 	scanner := NewScanner(
-		&fakeStaleReader{trips: []model.StaleTrip{first, second}},
+		newMockStaleReader(t, []model.StaleTrip{first, second}),
 		time.Minute,
 		1,
 		testLogger(),
@@ -87,7 +87,7 @@ func TestScannerAndWorkerObservability(t *testing.T) {
 	// На втором проходе первая задача повторяется, а вторая снова не помещается
 	scanner.Scan(context.Background())
 
-	push := &fakePush{}
+	push, _ := newRecordingPush(t, false)
 	pool := NewWorkerPool(context.Background(), scanner, push, time.Second, testLogger())
 	pool.Start(1)
 

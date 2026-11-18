@@ -2,7 +2,7 @@
 
 generate:
 	GOSUMDB=sum.golang.org go tool oapi-codegen -generate types,chi-server -package api -include-operation-ids createTrip,getTrip,finishTrip,createTripPosition,listTripPositions,health,ready  -o api/api.gen.go contracts/openapi/trip-service.openapi.yaml
-	GOSUMDB=sum.golang.org go generate ./internal/usecase/... ./internal/http/trip/... ./internal/http/position/... ./internal/transport/http ./internal/infra/telemetry
+	GOSUMDB=sum.golang.org go generate ./internal/usecase/... ./internal/http/trip/... ./internal/http/position/... ./internal/worker/positions/... ./internal/transport/http ./internal/infra/telemetry
 
 migrate:
 	set -a; . ./.env; set +a; GOSUMDB=sum.golang.org go tool goose -dir migrations postgres "$${DATABASE_URL}" up

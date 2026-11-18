@@ -13,6 +13,8 @@ import (
 )
 
 // staleTripsReader нужен сканеру для получения устаревших поездок
+//
+//go:generate go tool mockgen -source=scanner.go -destination=scanner_mocks_test.go -package=positions
 type staleTripsReader interface {
 	ListStaleTrips(ctx context.Context, staleAfter time.Duration) ([]model.StaleTrip, error)
 }
