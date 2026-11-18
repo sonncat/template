@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 type Client struct {
@@ -25,6 +26,11 @@ func New(baseURL string, timeout time.Duration) *Client {
 			Timeout: timeout,
 		},
 	}
+}
+
+// Close закрывает свободные HTTP-соединения клиента
+func (c *Client) Close() {
+	c.client.CloseIdleConnections()
 }
 
 type pushRequest struct {
@@ -63,6 +69,7 @@ func (c *Client) RequestPosition(
 	}
 
 	request.Header.Set("Content-Type", "application/json")
+	propagation.TraceContext{}.Inject(ctx, propagation.HeaderCarrier(request.Header))
 
 	response, err := c.client.Do(request)
 	if err != nil {

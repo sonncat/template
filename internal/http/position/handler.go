@@ -16,10 +16,20 @@ import (
 	"github.com/sonncat/template/internal/model"
 )
 
+type positionSavedMetric interface {
+	PositionSaved(ctx context.Context)
+}
+
+type taskCanceller interface {
+	Cancel(tripID uuid.UUID)
+}
+
 type Handler struct {
-	save    saveUseCase
-	list    listUseCase
-	timeout time.Duration
+	canceller taskCanceller
+	metrics   positionSavedMetric
+	save      saveUseCase
+	list      listUseCase
+	timeout   time.Duration
 }
 
 func New(save saveUseCase, list listUseCase, timeout time.Duration) *Handler {
@@ -28,6 +38,16 @@ func New(save saveUseCase, list listUseCase, timeout time.Duration) *Handler {
 		list:    list,
 		timeout: timeout,
 	}
+}
+
+// SetTaskCanceller подключает отмену ожидающих задач после сохранения координаты
+func (h *Handler) SetTaskCanceller(canceller taskCanceller) {
+	h.canceller = canceller
+}
+
+// SetMetrics подключает счётчик сохранённых координат
+func (h *Handler) SetMetrics(metrics positionSavedMetric) {
+	h.metrics = metrics
 }
 
 // requestBody использует указатели, чтобы отличить отсутствующее поле
@@ -96,6 +116,14 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request, tripID uuid.UUI
 	if err != nil {
 		writeError(w, r, err)
 		return
+	}
+
+	if h.canceller != nil {
+		h.canceller.Cancel(tripID)
+	}
+
+	if h.metrics != nil {
+		h.metrics.PositionSaved(ctx)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

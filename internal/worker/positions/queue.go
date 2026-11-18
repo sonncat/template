@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/sonncat/template/internal/model"
 )
@@ -18,6 +19,7 @@ const (
 
 type task struct {
 	trip model.StaleTrip
+	span trace.SpanContext
 }
 
 type queue struct {
@@ -35,6 +37,13 @@ func newQueue(size int) *queue {
 
 // enqueue не блокируется, если очередь заполнена
 func (q *queue) enqueue(trip model.StaleTrip) enqueueResult {
+	return q.enqueueWithSpan(trip, trace.SpanContext{})
+}
+
+func (q *queue) enqueueWithSpan(
+	trip model.StaleTrip,
+	span trace.SpanContext,
+) enqueueResult {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -42,7 +51,7 @@ func (q *queue) enqueue(trip model.StaleTrip) enqueueResult {
 		return duplicate
 	}
 
-	item := &task{trip: trip}
+	item := &task{trip: trip, span: span}
 	q.pending[trip.TripID] = item
 
 	select {

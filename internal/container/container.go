@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/sonncat/template/api"
 	"github.com/sonncat/template/internal/config"
+	"github.com/sonncat/template/internal/gateway/push"
 	"github.com/sonncat/template/internal/http/middleware"
 	positiontransport "github.com/sonncat/template/internal/http/position"
 	"github.com/sonncat/template/internal/infra/postgres"
@@ -25,6 +27,7 @@ import (
 	createtrip "github.com/sonncat/template/internal/usecase/trip/create"
 	finishtrip "github.com/sonncat/template/internal/usecase/trip/finish"
 	gettrip "github.com/sonncat/template/internal/usecase/trip/get"
+	"github.com/sonncat/template/internal/worker/positions"
 )
 
 // Container хранит собранный HTTP-обработчик и ресурсы приложения
@@ -32,6 +35,11 @@ type Container struct {
 	Handler   http.Handler
 	pool      *pgxpool.Pool
 	telemetry *telemetry.Providers
+
+	scannerCancel context.CancelFunc
+	scannerDone   chan struct{}
+	workers       *positions.WorkerPool
+	pushClient    *push.Client
 }
 
 // New создаёт зависимости приложения и связывает их между собой
@@ -91,11 +99,46 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 		cfg.DB.QueryTimeout,
 	)
 
-	handler.SetPositionHandler(positiontransport.New(
+	scanner := positions.NewScanner(
+		tripsRepo,
+		cfg.PositionStaleAfter,
+		int(cfg.PositionQueueSize),
+		logger,
+	)
+
+	pushClient := push.New(cfg.PushHTTPURL, cfg.PushRequestTimeout)
+	workers := positions.NewWorkerPool(
+		scanner,
+		pushClient,
+		cfg.PushRequestTimeout,
+		logger,
+	)
+
+	positionHandler := positiontransport.New(
 		saveposition.New(tripsRepo, txManager),
 		listpositions.New(tripsRepo),
 		cfg.DB.QueryTimeout,
-	))
+	)
+	positionMetrics, err := telemetry.NewPositionMetrics(
+		telemetryProviders.Meter.Meter("trip-service/positions"),
+		scanner.QueueSize,
+		workers.ActiveWorkers,
+	)
+	if err != nil {
+		_ = telemetryProviders.Shutdown(ctx)
+		pool.Close()
+		pushClient.Close()
+		return nil, fmt.Errorf("initialize position metrics: %w", err)
+	}
+
+	scanner.SetObservability(
+		positionMetrics,
+		telemetryProviders.Tracer.Tracer("trip-service/positions"),
+	)
+
+	positionHandler.SetTaskCanceller(scanner)
+	positionHandler.SetMetrics(positionMetrics)
+	handler.SetPositionHandler(positionHandler)
 
 	router := chi.NewRouter()
 
@@ -129,15 +172,47 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 		otelhttp.WithMeterProvider(telemetryProviders.Meter),
 	)
 
+	scannerCtx, scannerCancel := context.WithCancel(context.Background())
+	scannerDone := make(chan struct{})
+
+	workers.Start(int(cfg.PositionWorkers))
+
+	go func() {
+		defer close(scannerDone)
+
+		ticker := time.NewTicker(cfg.PositionCheckInterval)
+		defer ticker.Stop()
+
+		scanner.Run(scannerCtx, ticker.C)
+	}()
+
 	return &Container{
-		Handler:   middleware.Recover(logger)(tracedHandler),
-		pool:      pool,
-		telemetry: telemetryProviders,
+		Handler:       middleware.Recover(logger)(tracedHandler),
+		pool:          pool,
+		telemetry:     telemetryProviders,
+		scannerCancel: scannerCancel,
+		scannerDone:   scannerDone,
+		workers:       workers,
+		pushClient:    pushClient,
 	}, nil
 }
 
 // Close останавливает телеметрию и закрывает пул в пределах срока контекста
 func (c *Container) Close(ctx context.Context) error {
+	c.scannerCancel()
+
+	select {
+	case <-c.scannerDone:
+	case <-ctx.Done():
+		return fmt.Errorf("stop position scanner: %w", ctx.Err())
+	}
+
+	if err := c.workers.Stop(ctx); err != nil {
+		return fmt.Errorf("stop position workers: %w", err)
+	}
+
+	c.pushClient.Close()
+
 	var result error
 
 	if err := c.telemetry.Shutdown(ctx); err != nil {
