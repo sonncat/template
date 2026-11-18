@@ -204,10 +204,13 @@ func (c *Container) Close(ctx context.Context) error {
 	select {
 	case <-c.scannerDone:
 	case <-ctx.Done():
+		c.workers.Cancel()
+		c.pushClient.Close()
 		return fmt.Errorf("stop position scanner: %w", ctx.Err())
 	}
 
 	if err := c.workers.Stop(ctx); err != nil {
+		c.pushClient.Close()
 		return fmt.Errorf("stop position workers: %w", err)
 	}
 

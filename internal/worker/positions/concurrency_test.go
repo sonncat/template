@@ -185,3 +185,90 @@ func TestPoolCancelsPushWhenShutdownDeadlinePassed(t *testing.T) {
 		t.Fatal("worker did not stop after cancellation")
 	}
 }
+
+func TestPoolCancelStopsWorkers(t *testing.T) {
+	trip := model.StaleTrip{
+		TripID:   uuid.New(),
+		DriverID: uuid.New(),
+	}
+
+	scanner := NewScanner(
+		&fakeStaleReader{trips: []model.StaleTrip{trip}},
+		time.Minute,
+		1,
+		testLogger(),
+	)
+	scanner.Scan(context.Background())
+
+	push := &blockingPush{
+		started: make(chan uuid.UUID, 1),
+		release: make(chan struct{}),
+	}
+	defer close(push.release)
+
+	pool := NewWorkerPool(scanner, push, time.Minute, testLogger())
+	pool.Start(1)
+
+	select {
+	case <-push.started:
+	case <-time.After(5 * time.Second):
+		pool.Cancel()
+		t.Fatal("push request did not start")
+	}
+
+	pool.Cancel()
+
+	select {
+	case <-pool.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("workers did not stop after cancellation")
+	}
+}
+
+type cancellationReader struct {
+	started chan struct{}
+}
+
+func (r *cancellationReader) ListStaleTrips(
+	ctx context.Context,
+	_ time.Duration,
+) ([]model.StaleTrip, error) {
+	close(r.started)
+	<-ctx.Done()
+
+	return nil, ctx.Err()
+}
+
+func TestScannerCancelsRunningQuery(t *testing.T) {
+	reader := &cancellationReader{
+		started: make(chan struct{}),
+	}
+
+	scanner := NewScanner(reader, time.Minute, 1, testLogger())
+	ticks := make(chan time.Time, 1)
+	ticks <- time.Now()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		scanner.Run(ctx, ticks)
+	}()
+
+	select {
+	case <-reader.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scanner query did not start")
+	}
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scanner did not stop after query cancellation")
+	}
+}

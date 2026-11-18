@@ -153,6 +153,12 @@ func (p *WorkerPool) runWorker() {
 	}
 }
 
+// Cancel отменяет обработку задач при принудительной остановке
+func (p *WorkerPool) Cancel() {
+	p.cancel()
+}
+
+// Stop закрывает очередь после остановки сканера и ждёт воркеров
 func (p *WorkerPool) Stop(ctx context.Context) error {
 	close(p.scanner.queue.channel)
 
