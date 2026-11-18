@@ -96,3 +96,26 @@ func TestExecute(t *testing.T) {
 		}
 	})
 }
+
+func TestExecuteRejectsPositionTooFarInFuture(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	repo := NewMockpositionRepository(ctrl)
+	tx := NewMocktxManager(ctrl)
+
+	position := &model.Position{
+		TripID:     uuid.New(),
+		Latitude:   59.93,
+		Longitude:  30.33,
+		RecordedAt: time.Now().UTC().Add(2 * time.Minute),
+	}
+
+	_, err := New(repo, tx).Execute(context.Background(), position)
+
+	var validationErr *domain.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want validation error", err)
+	}
+	if validationErr.Field != "recorded_at" {
+		t.Errorf("field = %q, want recorded_at", validationErr.Field)
+	}
+}
