@@ -182,6 +182,9 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Contain
 	go func() {
 		defer close(scannerDone)
 
+		logger.Info("position scanner started")
+		defer logger.Info("position scanner stopped")
+
 		ticker := time.NewTicker(cfg.PositionCheckInterval)
 		defer ticker.Stop()
 

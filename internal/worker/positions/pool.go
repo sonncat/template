@@ -52,6 +52,8 @@ func NewWorkerPool(
 // Start запускает фиксированное число воркеров
 // Вызывать один раз при запуске приложения
 func (p *WorkerPool) Start(workers int) {
+	p.logger.Info("position workers started", "workers", workers)
+
 	var wg sync.WaitGroup
 
 	for range workers {
@@ -65,6 +67,7 @@ func (p *WorkerPool) Start(workers int) {
 
 	go func() {
 		wg.Wait()
+		p.logger.Info("position workers stopped")
 		close(p.done)
 	}()
 }
