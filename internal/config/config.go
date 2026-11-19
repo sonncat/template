@@ -16,6 +16,13 @@ type Config struct {
 	LogLevel          string
 	ShutdownTimeout   time.Duration
 
+	PositionCheckInterval time.Duration
+	PositionStaleAfter    time.Duration
+	PositionWorkers       int32
+	PositionQueueSize     int32
+	PushHTTPURL           string
+	PushRequestTimeout    time.Duration
+
 	DB Database
 }
 
@@ -105,7 +112,59 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	cfg.PositionCheckInterval, err = durationOrDefault("POSITION_CHECK_INTERVAL", 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.PositionStaleAfter, err = durationOrDefault("POSITION_STALE_AFTER", 60*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.PositionWorkers, err = int32OrDefault("POSITION_WORKERS", 4)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.PositionWorkers < 1 {
+		return nil, fmt.Errorf("POSITION_WORKERS must be at least 1")
+	}
+
+	cfg.PositionQueueSize, err = int32OrDefault("POSITION_QUEUE_SIZE", 100)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.PositionQueueSize < 1 {
+		return nil, fmt.Errorf("POSITION_QUEUE_SIZE must be at least 1")
+	}
+
+	cfg.PushHTTPURL, err = requiredString("PUSH_HTTP_URL")
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.PushRequestTimeout, err = durationOrDefault("PUSH_REQUEST_TIMEOUT", time.Second)
+	if err != nil {
+		return nil, err
+	}
+
 	return cfg, nil
+}
+
+func durationOrDefault(key string, fallback time.Duration) (time.Duration, error) {
+	if _, exists := os.LookupEnv(key); !exists {
+		return fallback, nil
+	}
+
+	return requiredDuration(key)
+}
+
+func int32OrDefault(key string, fallback int32) (int32, error) {
+	if _, exists := os.LookupEnv(key); !exists {
+		return fallback, nil
+	}
+
+	return requiredInt32(key)
 }
 
 func requiredString(key string) (string, error) {
